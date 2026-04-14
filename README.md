@@ -1,69 +1,40 @@
-# ⚡ VelocityBT — High-Performance F&O Backtesting Engine
 
-> A personal, ultra-fast options backtesting platform for Indian derivatives (BankNifty, Nifty, Sensex) — built with Rust + Phoenix (Elixir). Designed to be more advanced than AlgoTest, Stockmock, and Stoxxo combined.
+> Personal-grade FNO options backtesting platform — ultra-fast, metric-complete, multi-leg, portfolio-aware.
 
----
-
-## 📌 Table of Contents
-
-- [Overview](#overview)
-- [Tech Stack](#tech-stack)
-- [Architecture](#architecture)
-- [Data Layer](#data-layer)
-- [Strategy DSL](#strategy-dsl)
-- [Features](#features)
-  - [Strike Selection Engine](#strike-selection-engine)
-  - [SL / Exit Types](#sl--exit-types)
-  - [Re-entry Modes](#re-entry-modes)
-  - [Trailing Stop Logic](#trailing-stop-logic)
-  - [Portfolio Engine](#portfolio-engine)
-- [Metrics Suite (75 Metrics)](#metrics-suite-75-metrics)
-- [Performance Targets](#performance-targets)
-- [Build Order](#build-order)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [Roadmap](#roadmap)
+Built on **Rust** (simulation kernel) + **Phoenix/Elixir** (orchestration + real-time UI).
+Targets BankNifty, Nifty, and Sensex with 4+ years of 1-minute OHLCV, OI, and IV data.
 
 ---
 
-## Overview
+## Why QuantEdge?
 
-VelocityBT is a personal-use, high-performance backtesting platform for Indian F&O derivatives. It supports:
-
-- Multi-leg options strategies (straddle, strangle, iron condor, etc.)
-- 4 years of 1-minute resolution BankNifty, Nifty, and Sensex data
-- 75+ metrics across 6 categories
-- Parameter optimizer sweeps (1,000+ combinations in < 2 minutes)
-- Real-time streaming results via Phoenix LiveView
-- Portfolio-level backtesting with SPAN margin approximation
-
----
-
-## Tech Stack
-
-| Layer | Technology | Purpose |
+| Feature | AlgoTest / Stockmock | QuantEdge |
 |---|---|---|
-| Core Engine | **Rust** | Tick replay, Greeks, PnL, SL logic, simulation loop |
-| Parallelism | **Rayon** | Parallel parameter sweeps |
-| NIF Bridge | **Rustler** | Zero-overhead Phoenix ↔ Rust calls |
-| Orchestration | **Phoenix / Elixir** | Strategy DSL, job queues, real-time UI |
-| UI | **Phoenix LiveView** | Real-time streaming results dashboard |
-| Job Queue | **Oban** | Async Rust NIF dispatch |
-| Primary DB | **PostgreSQL** | Strategy definitions, run metadata, user config |
-| Result Store | **DuckDB** | Raw trade logs, time-series data (50–100M rows) |
-| Data Format | **Parquet** | Columnar, memory-mapped, partitioned by symbol/date |
+| Full 4yr single strategy | ~10–30 seconds | **< 1 second** |
+| 1,000-combo optimizer | Not available | **< 3 minutes** |
+| Greeks PnL attribution | No | **Yes (Δ Γ Θ V)** |
+| Portfolio backtesting | No | **Yes** |
+| Walk-forward / Monte Carlo | No | **Yes** |
+| Metrics count | ~15–25 | **75+** |
+| Per-leg trailing SL | Limited | **Full state machine** |
+| Strategy DSL | GUI only | **TOML + GUI builder** |
 
-### Key Rust Crates
+---
 
-```toml
-polars     = "0.39"   # Columnar data, lazy eval
-rayon      = "1.10"   # Parallel param sweeps
-rustler    = "0.32"   # Phoenix NIF bridge
-ndarray    = "0.15"   # Matrix ops for Greeks
-serde      = { features = ["derive"] }
-chrono     = "0.4"
-arrow2     = "0.18"   # Zero-copy memory-mapped Parquet reads
-```
+## Table of Contents
+
+- [Architecture](#architecture)
+- [Repository Layout](#repository-layout)
+- [Prerequisites](#prerequisites)
+- [Getting Started](#getting-started)
+- [Data Setup](#data-setup)
+- [Running a Backtest](#running-a-backtest)
+- [Strategy DSL Reference](#strategy-dsl-reference)
+- [Metrics Reference](#metrics-reference)
+- [Development Guide](#development-guide)
+- [Performance Targets](#performance-targets)
+- [Build Phases](#build-phases)
+- [Contributing](#contributing)
 
 ---
 
@@ -71,411 +42,585 @@ arrow2     = "0.18"   # Zero-copy memory-mapped Parquet reads
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Phoenix LiveView (UI)                     │
-│         Strategy Builder → Results Dashboard → Compare      │
+│  Phoenix LiveView  (strategy builder · results · optimizer) │
 └────────────────────────┬────────────────────────────────────┘
-                         │ PubSub (real-time streaming)
+                         │ HTTP + WS (LiveView)
 ┌────────────────────────▼────────────────────────────────────┐
-│                  Phoenix / Elixir Layer                      │
-│   GenServers (strategy processes) │ Oban (job queue)        │
-│   Portfolio Aggregator            │ DuckDB / Postgres        │
-└────────────────────────┬────────────────────────────────────┘
-                         │ Rustler NIF (zero serialization)
-┌────────────────────────▼────────────────────────────────────┐
-│                    Rust Core Engine                          │
-│   Tick Replay │ Greeks │ SL State Machine │ Metrics         │
-│   Strike Selector │ IV Interpolator │ Rayon Parallelism      │
-└────────────────────────┬────────────────────────────────────┘
-                         │ Memory-mapped reads
-┌────────────────────────▼────────────────────────────────────┐
-│                     Parquet Data Store                       │
-│   Partitioned by (symbol, year, month)                      │
-│   BankNifty │ Nifty │ Sensex │ 4 years │ 1-min resolution   │
+│  Phoenix / Elixir Application                               │
+│  ┌──────────┐  ┌──────────────┐  ┌────────────────────────┐ │
+│  │  Oban    │  │  PubSub      │  │  Strategy DSL parser   │ │
+│  │  jobs    │  │  progress    │  │  (TOML → validated     │ │
+│  └────┬─────┘  └──────────────┘  │   StrategyConfig)      │ │
+│       │                          └────────────────────────┘ │
+│  ┌────▼──────────────────────────────────────────────────┐  │
+│  │  Rustler NIF bridge  (async dirty CPU threads)        │  │
+│  └────────────────────────┬──────────────────────────────┘  │
+└───────────────────────────│────────────────────────────────-┘
+                            │ NIF calls
+┌───────────────────────────▼─────────────────────────────────┐
+│  Rust Core (quantedge-core)                                 │
+│  ┌────────────────┐  ┌────────────────┐  ┌───────────────┐  │
+│  │  quantedge-    │  │  quantedge-    │  │  quantedge-   │  │
+│  │  data          │  │  greeks        │  │  metrics      │  │
+│  │  (Parquet mmap │  │  (BS / SIMD)   │  │  (75+ metrics │  │
+│  │   IV interp)   │  │                │  │   Monte Carlo │  │
+│  └────────────────┘  └────────────────┘  │   walk-fwd)   │  │
+│                                          └───────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                            │
+┌───────────────────────────▼─────────────────────────────────┐
+│  Storage                                                    │
+│  Postgres (strategies, run metadata)                        │
+│  DuckDB   (trade logs, equity curves, optimizer results)    │
+│  Parquet  (bar data, partitioned by symbol/year/month)      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Phoenix LiveView Flow
+---
+
+## Repository Layout
 
 ```
-User defines strategy (visual builder)
-           ↓
-Elixir serializes → TOML → stores in Postgres
-           ↓
-Oban job dispatches → Rust NIF (async dirty thread)
-           ↓
-Rust emits progress events → Phoenix PubSub → LiveView
-           ↓
-Results stream to browser: equity curve, trade log, stats
-           ↓
-Compare view: overlay multiple run results
-```
-
----
-
-## Data Layer
-
-### Source Data
-- **Format**: 1-minute OHLCV + IV CSV files
-- **Symbols**: BankNifty, Nifty, Sensex
-- **Duration**: 4 years (~10–15 million rows total)
-
-### Internal Format
-- **Parquet**, partitioned by `(symbol, year, month)`
-- Memory-mapped reads via `polars` / `arrow2` in Rust
-- Full 4-year load time: **< 100ms**
-
-> ⚠️ **Important**: Do NOT use raw CSV at runtime. CSV I/O adds 2–5 seconds per backtest run, which compounds badly during optimizer sweeps. Convert to Parquet immediately.
-
-### IV Surface
-- Per-row IV from source data is used to build an **IV surface interpolator**
-- Method: Cubic spline over `(strike_offset, time_to_expiry)`
-- Ensures accurate mid-bar Greeks at all times
-
----
-
-## Strategy DSL
-
-Strategies are defined in **TOML** and stored in Postgres.
-
-```toml
-[strategy]
-name = "Short Strangle on Expiry Day"
-underlying = "BANKNIFTY"
-entry_time = "09:20"
-expiry_filter = "weekly"
-
-[[legs]]
-type = "CE"
-moneyness = "ATM+2"
-action = "sell"
-lots = 1
-
-[[legs]]
-type = "PE"
-moneyness = "ATM-2"
-action = "sell"
-lots = 1
-
-[stop_loss]
-type = "combined_premium"   # per_leg | index_points | delta
-value = 50.0                # % of combined premium received
-
-[trailing_sl]
-activate_at = 40            # Activate when 40% profit reached
-lock_in = 30                # Lock in 30% profit from peak
-
-[target]
-type = "percent_of_premium"
-value = 60.0
-
-[re_entry]
-enabled = true
-max_attempts = 2
-cooldown_bars = 5
-filter = "momentum"         # momentum | none | range_breakout
-
-[exit]
-time = "15:20"
-expiry_day_early_exit = true
-```
-
----
-
-## Features
-
-### Strike Selection Engine
-
-A dedicated Rust module supporting 4 strike selection modes:
-
-| Mode | Description |
-|---|---|
-| **ATM ± N offset** | ATM, ATM+1, ATM+2, ITM-3, etc. |
-| **Delta-based** | Sell the 0.20 delta strike |
-| **Premium-based** | Select strike nearest to ₹X premium |
-| **Percentage OTM** | X% out of the money from spot |
-
----
-
-### SL / Exit Types
-
-All implemented as **Rust enum variants**, resolved per-bar in the simulation loop:
-
-| Type | Description |
-|---|---|
-| `PerLegSL` | Absolute points / % of premium / % of spot |
-| `CombinedPremiumSL` | Total debit/credit crosses threshold |
-| `IndexBasedSL` | Underlying moves X points against position |
-| `DeltaSL` | Net position delta exceeds threshold |
-| `TrailingSL` | Activate at profit %, trail from peak high-water mark |
-| `TimedExit` | Hard exit at time, or N bars before expiry |
-| `OCOBracket` | First of SL or target fires, cancels the other |
-| `MomentumFilter` | RSI / EMA cross gating entries and re-entries |
-
----
-
-### Re-entry Modes
-
-| Mode | Behavior |
-|---|---|
-| **RE ASAP** | Re-enter on the next bar immediately |
-| **RE at same time** | Re-enter at same time next session |
-| **RE after N bars** | Cooldown period before re-entry |
-| **RE on momentum** | RSI/EMA confirmation required |
-
----
-
-### Trailing Stop Logic
-
-The trailing SL is a **stateful component** tracked per-leg or combined:
-
-1. Position enters profit zone
-2. At `activate_at` % profit → trailing begins
-3. High-water mark is tracked continuously
-4. SL trails by `lock_in` % from peak
-5. If price retraces past the trail → position exits
-
----
-
-### Portfolio Engine
-
-Managed by **Elixir GenServer processes** (one per strategy), with a central aggregator:
-
-- Runs multiple strategies concurrently as supervised processes
-- Computes combined margin using **SPAN approximation** (NSE SPAN model)
-- Tracks **net Greeks** across all open positions in real time
-- Enforces **capital allocation** limits per strategy
-- Generates **correlation matrix** of strategy returns
-- Correctly handles overlapping positions on the same underlying
-
----
-
-## Metrics Suite (75 Metrics)
-
-### Returns
-Total PnL, CAGR, Win Rate, Profit Factor, Expectancy, Avg Win, Avg Loss, Largest Win, Largest Loss, Consecutive Wins, Consecutive Losses, Avg Trade Duration, Total Trades, Winning Trades, Losing Trades
-
-### Risk
-Max Drawdown (Absolute), Max Drawdown (%), Sharpe Ratio, Sortino Ratio, Calmar Ratio, VaR 95%, VaR 99%, CVaR (Expected Shortfall), Ulcer Index, Recovery Factor, Max Runup, Payoff Ratio, Risk/Reward Ratio
-
-### Options-Specific
-Theta Collected per Day, Avg IV at Entry, Avg IV at Exit, IV Crush Capture Rate, Delta PnL Attribution, Gamma PnL Attribution, Theta PnL Attribution, Vega PnL Attribution, Premium Capture %, Avg DTE at Entry, Avg Greeks at Entry/Exit
-
-### Time Analysis
-Monthly PnL Heatmap, Weekly PnL Heatmap, Day-of-Week Performance, DTE Bucket Performance (0–7, 7–15, 15–30 days), Time-of-Day Entry Comparison, Expiry Day vs Non-Expiry Performance
-
-### Portfolio
-Combined Margin Utilization, Net Delta (portfolio), Net Theta (portfolio), Net Vega (portfolio), Strategy Correlation Matrix, Capital Utilization %, Margin-Adjusted Returns
-
-### Trade-Level
-Entry Price, Exit Price, Slippage Estimate, Per-Trade Greeks at Entry/Exit, MTM per Bar, Leg-wise PnL Breakdown, Trade Tag / Strategy Label
-
----
-
-## Performance Targets
-
-| Task | Target |
-|---|---|
-| Single strategy, 4-year backtest | **< 1 second** |
-| 1,000-parameter optimizer sweep | **< 2 minutes** |
-| Portfolio backtest (5 strategies) | **< 5 seconds** |
-| Walk-forward validation (12 windows) | **< 30 seconds** |
-
-*Benchmarked on a modern 8-core machine with Rayon parallelism.*
-
----
-
-## Build Order
-
-> Follow this sequence — each stage builds on the previous.
-
-```
-Phase 1 — Data Foundation
-  ├── CSV → Parquet converter (partitioned by symbol/date)
-  ├── IV surface interpolator (cubic spline)
-  └── Schema validation & data integrity checks
-
-Phase 2 — Single-Leg Simulator
-  ├── ATM CE/PE selection
-  ├── Fixed SL + target logic
-  └── Basic metrics (PnL, win rate, drawdown)
-
-Phase 3 — Multi-Leg Engine
-  ├── Straddle / strangle / iron condor
-  ├── Combined SL state machine
-  └── OCO bracket orders
-
-Phase 4 — Advanced SL & Re-entry
-  ├── Trailing SL with high-water mark tracking
-  ├── All 4 re-entry modes
-  └── Momentum / range breakout filters
-
-Phase 5 — Phoenix / Rustler Bridge
-  ├── NIF wrapping of Rust engine
-  ├── Oban async job queue
-  └── PubSub progress streaming
-
-Phase 6 — Portfolio Engine
-  ├── Multi-strategy GenServer supervision
-  ├── SPAN margin approximation
-  └── Correlation matrix + net Greeks
-
-Phase 7 — LiveView Frontend
-  ├── Visual strategy builder
-  ├── Real-time results dashboard
-  └── Multi-run compare view
-
-Phase 8 — Optimizer
-  ├── Parameter sweep UI
-  ├── Heatmap visualization
-  └── Walk-forward validation
-```
-
----
-
-## Project Structure
-
-```
-velocitybt/
-├── rust_engine/                   # Rust core
-│   ├── src/
-│   │   ├── data/
-│   │   │   ├── loader.rs          # Parquet loader, memory-mapped reads
-│   │   │   ├── iv_surface.rs      # Cubic spline IV interpolator
-│   │   │   └── schema.rs          # Internal data types
-│   │   ├── strategy/
-│   │   │   ├── dsl.rs             # TOML strategy deserializer
-│   │   │   ├── strike_selector.rs # 4 strike selection modes
-│   │   │   ├── legs.rs            # Leg definitions
-│   │   │   └── re_entry.rs        # Re-entry state machines
-│   │   ├── simulation/
-│   │   │   ├── engine.rs          # Main tick-replay loop
-│   │   │   ├── sl_machine.rs      # All SL/exit type handlers
-│   │   │   ├── trailing.rs        # Trailing SL high-water mark
-│   │   │   └── portfolio.rs       # Multi-strategy aggregation
-│   │   ├── greeks/
-│   │   │   ├── black_scholes.rs   # BS pricing + Greeks
-│   │   │   └── attribution.rs     # Delta/Gamma/Theta/Vega PnL
-│   │   ├── metrics/
-│   │   │   ├── returns.rs         # Return metrics
-│   │   │   ├── risk.rs            # Risk metrics (Sharpe, VaR, etc.)
-│   │   │   ├── options.rs         # Options-specific metrics
-│   │   │   └── time_analysis.rs   # Heatmaps, DTE buckets
-│   │   └── nif/
-│   │       └── bridge.rs          # Rustler NIF exports
-│   └── Cargo.toml
-│
-├── phoenix_app/                   # Elixir/Phoenix layer
-│   ├── lib/
-│   │   ├── velocitybt/
-│   │   │   ├── strategies/        # Strategy CRUD, TOML serialization
-│   │   │   ├── backtest/
-│   │   │   │   ├── runner.ex      # Oban job → Rust NIF dispatch
-│   │   │   │   └── portfolio.ex   # Portfolio GenServer supervisor
-│   │   │   └── results/
-│   │   │       ├── store.ex       # DuckDB result persistence
-│   │   │       └── analytics.ex   # Query helpers for metrics
-│   │   └── velocitybt_web/
-│   │       ├── live/
-│   │       │   ├── strategy_builder_live.ex
-│   │       │   ├── backtest_live.ex
-│   │       │   └── compare_live.ex
-│   │       └── components/
-│   │           ├── equity_curve.ex
-│   │           ├── trade_log.ex
-│   │           └── metrics_panel.ex
-│   ├── priv/
-│   │   └── repo/migrations/
-│   └── mix.exs
+quantedge/
+├── apps/
+│   ├── quantedge_core/          # Rust workspace
+│   │   ├── crates/
+│   │   │   ├── core/            # Simulation kernel, strategy runner
+│   │   │   ├── data/            # Parquet reader, bar stream, IV surface
+│   │   │   ├── greeks/          # Black-Scholes, binomial, SIMD pricers
+│   │   │   ├── metrics/         # All 75+ metrics, Monte Carlo, walk-fwd
+│   │   │   └── nif/             # Rustler NIF wrapper (calls into core)
+│   │   └── Cargo.toml
+│   │
+│   └── quantedge_web/           # Phoenix / Elixir umbrella app
+│       ├── lib/
+│       │   ├── quantedge/
+│       │   │   ├── strategies/  # Strategy CRUD, DSL parser
+│       │   │   ├── runs/        # Run management, result storage
+│       │   │   ├── optimizer/   # Param grid, sweep orchestration
+│       │   │   ├── portfolio/   # Multi-strategy portfolio engine
+│       │   │   └── workers/     # Oban workers (backtest, optimizer, portfolio)
+│       │   └── quantedge_web/
+│       │       ├── live/        # LiveView modules (builder, results, optimizer)
+│       │       └── components/  # Shared UI components
+│       ├── priv/
+│       │   └── repo/migrations/ # Postgres migrations
+│       └── mix.exs
 │
 ├── data/
-│   ├── raw/                       # Original CSV files (do not modify)
+│   ├── raw/                     # Original CSVs (gitignored)
 │   │   ├── banknifty/
 │   │   ├── nifty/
 │   │   └── sensex/
-│   └── parquet/                   # Converted Parquet files
-│       ├── banknifty/
+│   └── parquet/                 # Converted Parquet files (gitignored)
+│       ├── banknifty/{year}/{month:02}.parquet
 │       ├── nifty/
 │       └── sensex/
 │
+├── config/
+│   ├── strategies/              # Example strategy TOML files
+│   │   ├── short_straddle.toml
+│   │   ├── short_strangle.toml
+│   │   └── iron_condor.toml
+│   └── lot_sizes.toml           # NSE lot size lookup by symbol + date range
+│
 ├── scripts/
-│   ├── csv_to_parquet.py          # Data conversion script
-│   └── validate_data.py           # Data integrity checker
+│   ├── csv_to_parquet.py        # One-time data conversion
+│   └── validate_data.py         # Data integrity checks
+│
+├── docs/
+│   ├── PRD.md                   # Full product requirements
+│   ├── METRICS.md               # All 75 metrics with formulas
+│   └── DSL.md                   # Strategy TOML schema reference
 │
 └── README.md
 ```
 
 ---
 
-## Getting Started
+## Prerequisites
 
-### Prerequisites
+### System
 
-- **Rust** >= 1.75 (`rustup install stable`)
-- **Elixir** >= 1.16 + **Erlang/OTP** >= 26
-- **Phoenix** >= 1.7
-- **PostgreSQL** >= 15
-- **DuckDB** >= 0.10
-- **Python** >= 3.10 (for data conversion scripts)
+| Tool | Version | Notes |
+|---|---|---|
+| Rust | 1.78+ (stable) | Install via [rustup](https://rustup.rs) |
+| Elixir | 1.16+ | Requires OTP 26+ |
+| Erlang/OTP | 26+ | Usually installed with Elixir |
+| Node.js | 18+ | For Phoenix assets |
+| Postgres | 16+ | |
+| DuckDB | 0.10+ | Embedded - no separate server needed |
+| Python | 3.11+ | For data conversion scripts only |
 
-### 1. Convert Data to Parquet
+### Python packages (data conversion only)
 
 ```bash
-cd scripts
-pip install polars pyarrow
-python csv_to_parquet.py --input ../data/raw --output ../data/parquet
+pip install polars pyarrow pandas
 ```
 
-### 2. Build the Rust Engine
+---
+
+## Getting Started
+
+### 1. Clone and set up
 
 ```bash
-cd rust_engine
+git clone https://github.com/yourname/quantedge.git
+cd quantedge
+```
+
+### 2. Install Elixir dependencies
+
+```bash
+cd apps/quantedge_web
+mix deps.get
+mix assets.setup
+```
+
+### 3. Build the Rust core
+
+```bash
+cd apps/quantedge_core
 cargo build --release
 ```
 
-### 3. Set Up Phoenix App
+Rustler will automatically compile and link the NIF when you run `mix compile` from the Phoenix app.
+
+### 4. Set up databases
 
 ```bash
-cd phoenix_app
-mix deps.get
-mix ecto.setup
+# Create and migrate Postgres
+cd apps/quantedge_web
+mix ecto.create
+mix ecto.migrate
+
+# DuckDB database is created automatically on first run at priv/quantedge.duckdb
+```
+
+### 5. Configure environment
+
+```bash
+cp apps/quantedge_web/.env.example apps/quantedge_web/.env
+```
+
+Edit `.env`:
+
+```env
+DATABASE_URL=ecto://postgres:postgres@localhost/quantedge_dev
+SECRET_KEY_BASE=<generate with: mix phx.gen.secret>
+PHX_HOST=localhost
+PORT=4000
+DATA_DIR=/absolute/path/to/quantedge/data/parquet
+```
+
+### 6. Start the server
+
+```bash
+cd apps/quantedge_web
 mix phx.server
 ```
 
-### 4. Open the UI
+Open [http://localhost:4000](http://localhost:4000).
+
+---
+
+## Data Setup
+
+### Step 1: Place your CSV files
 
 ```
-http://localhost:4000
+data/raw/
+├── banknifty/
+│   ├── 2021.csv
+│   ├── 2022.csv
+│   └── ...
+├── nifty/
+└── sensex/
+```
+
+Your CSV must follow this schema:
+
+```
+timestamp,date,time,weekday,option_type,strike_label,strike_offset,
+moneyness,open,high,low,close,volume,strike,oi,spot,iv
+```
+
+### Step 2: Convert to Parquet
+
+```bash
+python scripts/csv_to_parquet.py \
+  --input data/raw/banknifty/ \
+  --output data/parquet/banknifty/ \
+  --symbol BANKNIFTY
+
+# Repeat for nifty and sensex
+```
+
+This partitions data by year/month and validates the schema. Expect ~30–60 seconds per symbol for 4 years of data.
+
+### Step 3: Validate
+
+```bash
+python scripts/validate_data.py --data-dir data/parquet/
+```
+
+Output shows: bar counts per symbol/year, date gaps, IV coverage, OI completeness.
+
+### Step 4: Verify in UI
+
+Navigate to `/data` in the web UI to see an interactive data explorer confirming all symbols are loaded.
+
+---
+
+## Running a Backtest
+
+### Via the UI
+
+1. Go to `/strategies/new`
+2. Build your strategy using the leg editor (see [Strategy DSL Reference](#strategy-dsl-reference) for all options)
+3. Click **Run** — configure date range, capital, and cost settings
+4. Watch real-time progress, then explore the full results at `/runs/:id`
+
+### Via the API
+
+```bash
+curl -X POST http://localhost:4000/api/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "strategy_id": "uuid-here",
+    "date_from": "2021-01-01",
+    "date_to": "2024-12-31",
+    "capital": 500000,
+    "brokerage_per_lot": 40
+  }'
+```
+
+### Via Elixir directly (IEx)
+
+```elixir
+iex -S mix phx.server
+
+# Run a strategy inline
+strategy = QuantEdge.Strategies.get_strategy!("uuid")
+{:ok, result} = QuantEdge.Runs.run_backtest(strategy, %{
+  date_from: ~D[2021-01-01],
+  date_to: ~D[2024-12-31],
+  capital: 500_000
+})
+
+IO.inspect(result.metrics["sharpe_ratio"])
 ```
 
 ---
 
-## Roadmap
+## Strategy DSL Reference
 
-- [x] Architecture design
-- [x] Strategy DSL spec
-- [x] Metrics suite definition
-- [ ] Parquet data pipeline
-- [ ] Single-leg simulator (Rust)
-- [ ] Multi-leg engine (Rust)
-- [ ] Trailing SL + re-entry state machines
-- [ ] Rustler NIF bridge
-- [ ] Phoenix Oban job queue
-- [ ] Portfolio engine (Elixir)
-- [ ] LiveView strategy builder UI
-- [ ] LiveView results dashboard
-- [ ] Parameter optimizer + heatmap
-- [ ] Walk-forward validation
-- [ ] DuckDB result analytics
+Strategies are defined in TOML. The UI generates this automatically, but you can also write and import them directly.
+
+### Minimal example — ATM short straddle
+
+```toml
+[strategy]
+name = "ATM Short Straddle - Weekly"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+expiry_filter = "weekly"
+capital = 500000
+brokerage_per_lot = 40.0
+slippage_model = "fixed_pts"
+slippage_value = 1.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+expiry = "weekly"
+strike_mode = "atm_offset"
+strike_offset = 0
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 100.0
+
+[[legs]]
+option_type = "PE"
+position = "sell"
+lots = 1
+expiry = "weekly"
+strike_mode = "atm_offset"
+strike_offset = 0
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 100.0
+
+[overall]
+overall_sl_enabled = true
+overall_sl_type = "percent_of_premium"
+overall_sl_value = 60.0
+overall_target_enabled = true
+overall_target_type = "percent_of_premium"
+overall_target_value = 50.0
+```
+
+### Advanced example — short strangle with trailing SL and re-entry
+
+```toml
+[strategy]
+name = "Short Strangle - Trail + Reentry"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+expiry_filter = "weekly"
+capital = 500000
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+strike_mode = "atm_offset"
+strike_offset = 2          # ATM+2 (one strike OTM)
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 80.0
+trail_sl_enabled = true
+trail_sl_activate_at = 40.0  # Activate when 40% profit
+trail_sl_lock_in = 30.0      # Lock in 30% from peak
+trail_sl_type = "percent"
+reentry_on_sl = true
+reentry_mode = "after_n_bars"
+reentry_cooldown_bars = 5
+reentry_max_attempts = 2
+momentum_filter_enabled = true
+momentum_type = "range_breakout"
+range_breakout_time = "09:45"
+range_breakout_side = "high"
+
+[[legs]]
+option_type = "PE"
+position = "sell"
+lots = 1
+strike_mode = "atm_offset"
+strike_offset = -2         # ATM-2 (one strike OTM)
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 80.0
+trail_sl_enabled = true
+trail_sl_activate_at = 40.0
+trail_sl_lock_in = 30.0
+trail_sl_type = "percent"
+reentry_on_sl = true
+reentry_mode = "after_n_bars"
+reentry_cooldown_bars = 5
+reentry_max_attempts = 2
+
+[overall]
+overall_sl_enabled = true
+overall_sl_type = "max_loss"
+overall_sl_value = 10000.0  # INR hard cap
+```
+
+### Strike mode options
+
+| Mode | Field | Example |
+|---|---|---|
+| `atm_offset` | `strike_offset` (int) | 0 = ATM, 2 = ATM+2, -5 = ATM-5 |
+| `delta` | `delta_target` (float) | 0.20 = sell 20-delta strike |
+| `premium` | `premium_target` (float) | 200.0 = strike nearest ₹200 premium |
+| `percent_otm` | `percent_otm_value` (float) | 2.0 = 2% OTM from spot |
+
+### Stop loss types
+
+| Type | Trigger |
+|---|---|
+| `points` | Option price moves X points against position |
+| `percent_of_premium` | PnL exceeds X% of entry premium |
+| `percent_of_margin` | MTM loss exceeds X% of SPAN margin at entry |
+| `index_points` | Underlying spot moves X points against delta |
+| `delta_breach` | Leg delta crosses configured threshold |
+| `combined_premium` | Sum of all leg PnLs crosses threshold |
+
+### Re-entry modes
+
+| Mode | Behaviour |
+|---|---|
+| `reasap` | Re-enter at open of next available bar |
+| `same_time` | Re-enter at the same time on the next trading day |
+| `after_n_bars` | Wait `reentry_cooldown_bars` before re-entering |
+| `momentum_confirm` | Re-enter only when momentum filter confirms |
 
 ---
 
-## Notes
+## Metrics Reference
 
-- This is a **personal-use project** — not intended for commercial deployment
-- SPAN margin calculations are approximations; not certified NSE figures
-- Greeks are computed using Black-Scholes; model risk applies for deep ITM/OTM options
-- Always validate backtest results against a known benchmark before trading
+All 75+ metrics are grouped into six categories. Full formulas are in `docs/METRICS.md`.
+
+### Return metrics
+`total_pnl_gross` · `total_pnl_net` · `cagr` · `roi_pct` · `expectancy` · `profit_factor` · `win_rate_pct` · `avg_win` · `avg_loss` · `win_loss_ratio` · `largest_win` · `largest_loss` · `gross_profit` · `gross_loss`
+
+### Risk metrics
+`max_drawdown_inr` · `max_drawdown_pct` · `avg_drawdown` · `sharpe_ratio` · `sortino_ratio` · `calmar_ratio` · `omega_ratio` · `var_95` · `var_99` · `cvar` · `ulcer_index` · `daily_volatility` · `ann_volatility` · `skewness` · `kurtosis` · `recovery_factor` · `drawdown_duration_bars`
+
+### Trade analytics
+`total_trades` · `avg_hold_bars` · `max_hold_bars` · `max_consec_wins` · `max_consec_losses` · `sl_hit_rate_pct` · `target_hit_rate_pct` · `time_exit_rate_pct` · `reentry_count` · `reentry_win_rate` · `total_brokerage` · `total_slippage` · `total_stt` · `net_cost_ratio`
+
+### Options-specific
+`premium_capture_pct` · `total_theta_collected` · `avg_theta_per_day` · `avg_iv_at_entry` · `avg_iv_at_exit` · `iv_crush_pct` · `delta_pnl` · `gamma_pnl` · `theta_pnl` · `vega_pnl` · `avg_net_delta` · `dte_distribution` · `breakeven_range` · `max_profit_theoretical` · `max_loss_theoretical`
+
+### Portfolio metrics
+`strategy_correlation_matrix` · `portfolio_sharpe` · `peak_margin_used` · `capital_efficiency` · `net_portfolio_greeks` · `avg_concurrent_trades` · `diversification_benefit`
+
+### Time-based analytics
+`monthly_pnl_heatmap` · `day_of_week_pnl` · `expiry_day_performance` · `best_month` · `worst_month` · `pct_profitable_months` · `pct_profitable_weeks` · `walk_forward_results` · `monte_carlo_bands` · `rolling_sharpe_12m` · `equity_curve` · `drawdown_curve` · `iv_regime_performance` · `market_regime_performance`
 
 ---
 
-*Built with Rust 🦀 + Elixir 💧 for maximum performance and reliability.*
+## Development Guide
+
+### Running tests
+
+```bash
+# Rust unit tests
+cd apps/quantedge_core
+cargo test
+
+# Elixir tests
+cd apps/quantedge_web
+mix test
+
+# Integration tests (requires running Postgres + data loaded)
+mix test --tag integration
+```
+
+### Benchmarks
+
+```bash
+cd apps/quantedge_core
+cargo bench
+
+# Key benchmarks:
+# simulation_4yr_banknifty   — single strategy full run
+# greeks_batch_1000          — Greeks calculation throughput
+# metrics_full_suite         — All metrics from 10k trades
+```
+
+### Running the optimizer locally
+
+```bash
+# From IEx
+QuantEdge.Optimizer.run_sweep("strategy-uuid", %{
+  strike_offset_ce: [0, 1, 2, 3, 4, 5],
+  strike_offset_pe: [0, -1, -2, -3, -4, -5],
+  sl_value: [50.0, 60.0, 70.0, 80.0, 100.0],
+  target_value: [30.0, 40.0, 50.0]
+})
+# 6 × 6 × 5 × 4 = 720 combinations, runs in < 2 minutes
+```
+
+### Code conventions
+
+- Rust: `cargo fmt` + `cargo clippy` before every commit. No unsafe except in the NIF layer.
+- Elixir: `mix format`. Contexts over raw Ecto queries everywhere.
+- All simulation logic lives in Rust. Elixir contains zero simulation math.
+- All database writes go through Elixir. Rust returns plain data structures to the NIF caller.
+
+---
+
+## Performance Targets
+
+| Scenario | Target |
+|---|---|
+| Single strategy, 4-year backtest | **< 1 second** |
+| 10-strategy portfolio backtest | **< 5 seconds** |
+| 1,000-combo optimizer sweep | **< 3 minutes** |
+| Walk-forward (12 windows) | **< 20 seconds** |
+| Monte Carlo (1,000 simulations) | **< 10 seconds** |
+| Data load, 4yr 1 symbol (Parquet) | **< 100 ms** |
+| LiveView progress update latency | **< 500 ms** |
+
+### How we hit these numbers
+
+- **Zero-copy Parquet reads** via Arrow2 memory-mapped files — no deserialization on the hot path
+- **Single-threaded inner loop** per strategy — maximizes L1/L2 cache hit rate on bar data
+- **Rayon parallelism at strategy level** — optimizer sweep spawns N strategies across all CPU cores
+- **Greeks computed only when needed** — skipped entirely unless delta-SL mode or attribution report is active
+- **Rustler dirty CPU NIFs** — simulation runs on Erlang dirty scheduler, never blocks the BEAM
+- **DuckDB for analytics queries** — columnar engine is 10–50× faster than Postgres for time-series aggregations
+
+---
+
+## Build Phases
+
+| Phase | Scope | Est. Duration |
+|---|---|---|
+| 1 — Data foundation | CSV → Parquet converter, IV interpolator, data explorer UI | 2 weeks |
+| 2 — Single-leg engine | Basic CE/PE sim, ATM strike, fixed SL/target, 20 metrics | 2 weeks |
+| 3 — Multi-leg + advanced SL | Multi-leg DSL, combined SL, trailing SL state machine, OCO | 3 weeks |
+| 4 — Re-entry + momentum | Re-entry state machine (all modes), RSI/EMA/range-breakout filters | 2 weeks |
+| 5 — Full metrics suite | All 75 metrics, Greeks attribution, walk-forward, Monte Carlo | 2 weeks |
+| 6 — Phoenix + NIF bridge | Rustler NIFs, Oban jobs, Postgres + DuckDB schema, PubSub | 2 weeks |
+| 7 — LiveView UI | Strategy builder, run manager, full results viewer | 3 weeks |
+| 8 — Portfolio engine | Multi-strategy runner, margin model, correlation matrix | 2 weeks |
+| 9 — Optimizer + hardening | Param sweep UI, heatmap, perf profiling, edge case testing | 2 weeks |
+
+---
+
+## Key Dependencies
+
+### Rust
+
+| Crate | Purpose |
+|---|---|
+| `polars` | Columnar dataframe, Parquet I/O |
+| `arrow2` | Zero-copy Arrow memory mapped reads |
+| `rayon` | Data parallelism (work-stealing thread pool) |
+| `rustler` | Elixir NIF bridge |
+| `serde` + `serde_json` | Strategy config deserialization |
+| `chrono` | Date/time handling |
+| `ndarray` | Matrix ops for Greeks batching |
+| `statrs` | Statistical distributions (Monte Carlo) |
+
+### Elixir / Phoenix
+
+| Package | Purpose |
+|---|---|
+| `phoenix` + `phoenix_live_view` | Web framework + real-time UI |
+| `oban` | Background job queue (Postgres-backed) |
+| `rustler` | NIF compilation + loading |
+| `ecto` + `ecto_sql` | Postgres ORM |
+| `duckdbex` | DuckDB Elixir bindings |
+| `jason` | JSON encoding/decoding |
+| `nimble_toml` | TOML parsing for strategy DSL |
+
+---
+
+## Frequently Asked Questions
+
+**Q: Why Rust + Elixir instead of Python?**
+
+Python with pandas/numpy can do this but will be 10–50× slower on the simulation kernel. A 4-year backtest that takes 1 second in Rust takes 30–60 seconds in pure Python. For optimizer sweeps across 1,000+ param combos the difference is hours vs minutes.
+
+**Q: Why DuckDB alongside Postgres?**
+
+Postgres is great for transactional data (strategies, run configs, user state). For time-series analytical queries — "give me the monthly PnL heatmap for all runs of this strategy" — DuckDB's columnar engine is dramatically faster. Both serve different access patterns.
+
+**Q: Can I add my own symbol / data?**
+
+Yes. Any symbol with the same CSV schema will work. Add it to `config/lot_sizes.toml` with the correct lot size and pass the symbol name when running the CSV converter. The Rust data layer is symbol-agnostic.
+
+**Q: Is calendar spread support planned?**
+
+Not in V1. Calendar spreads require stitching two different expiry rows, which adds significant complexity to the bar stream builder. It is a V2 feature.
+
+**Q: How accurate is the margin model?**
+
+V1 uses a simplified SPAN approximation (3× premium + index factor). It is directionally accurate for margin-awareness but not exact. Full NSE SPAN file parsing is a V2 enhancement.
+
+---
+
+## License
+
+Private — personal use only. Not for redistribution.
+
+---
+
+*Built with Rust + Phoenix. Data: NSE FNO 1-minute bars. Instruments: BankNifty, Nifty, Sensex.*
