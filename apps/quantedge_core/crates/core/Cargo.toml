@@ -3,9 +3,22 @@ name = "quantedge-core"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "backtest"
+path = "src/bin/backtest.rs"
+
 [dependencies]
 quantedge-data = { path = "../data" }
+quantedge-metrics = { path = "../metrics" }
 chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
+clap = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "backtest_bench"
+harness = false

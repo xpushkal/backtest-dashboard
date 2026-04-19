@@ -31,8 +31,7 @@ pub struct SimBar {
     pub spot: f64,
 }
 
-/// Groups bars by (date, time) in chronological order.
-type TimeGroup = Vec<usize>; // indices into the bars slice
+
 
 /// The simulation runner.
 pub struct SimRunner;
@@ -78,7 +77,7 @@ impl SimRunner {
 
                 // 3. EXIT CHECKS (priority: SL → Target → Time)
                 if let Some(reason) = Self::check_exits(config, pos, time) {
-                    let exit_bar_idx = indices[0];
+
                     let closed = Self::close_position(
                         pos, config, bars, indices, date, time, reason, lot_size,
                     );

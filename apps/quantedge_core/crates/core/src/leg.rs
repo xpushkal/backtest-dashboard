@@ -3,8 +3,7 @@
 //! A `Leg` represents a single option position (CE/PE, buy/sell) with
 //! mark-to-market tracking and stop-loss state management.
 
-use crate::config::{ExitReason, LegConfig, OptionType, PositionSide, SlType};
-use chrono::NaiveTime;
+use crate::config::{ExitReason, LegConfig, PositionSide, SlType};
 
 /// Stop-loss state machine.
 ///
@@ -220,7 +219,7 @@ impl Leg {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::StrikeMode;
+    use crate::config::{OptionType, StrikeMode};
 
     fn make_leg_config(
         option_type: OptionType,
