@@ -1,0 +1,76 @@
+# ─── Iron Condor — BankNifty Weekly ─────────────────────────
+# 4-leg defined-risk strategy:
+#   Sell OTM CE + Buy further OTM CE (bear call spread)
+#   Sell OTM PE + Buy further OTM PE (bull put spread)
+# Profits from range-bound markets with capped max loss.
+
+[strategy]
+name = "Iron Condor BN Weekly"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+expiry_filter = "weekly"
+trade_on_expiry = true
+max_concurrent_trades = 1
+capital = 500000.0
+brokerage_per_lot = 40.0
+slippage_model = "fixed_pts"
+slippage_value = 1.0
+stt_on_sell = true
+
+# ── Leg 1: Sell OTM CE (short wing) ─────────────────────────
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+expiry = "weekly"
+strike_mode = "atm_offset"
+strike_offset = 5
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 150.0
+target_profit_enabled = false
+
+# ── Leg 2: Buy further OTM CE (long wing / hedge) ───────────
+[[legs]]
+option_type = "CE"
+position = "buy"
+lots = 1
+expiry = "weekly"
+strike_mode = "atm_offset"
+strike_offset = 10
+stop_loss_enabled = false
+target_profit_enabled = false
+
+# ── Leg 3: Sell OTM PE (short wing) ─────────────────────────
+[[legs]]
+option_type = "PE"
+position = "sell"
+lots = 1
+expiry = "weekly"
+strike_mode = "atm_offset"
+strike_offset = -5
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 150.0
+target_profit_enabled = false
+
+# ── Leg 4: Buy further OTM PE (long wing / hedge) ───────────
+[[legs]]
+option_type = "PE"
+position = "buy"
+lots = 1
+expiry = "weekly"
+strike_mode = "atm_offset"
+strike_offset = -10
+stop_loss_enabled = false
+target_profit_enabled = false
+
+# ── Overall Exit ─────────────────────────────────────────────
+[overall]
+overall_sl_enabled = true
+overall_sl_type = "combined_premium"
+overall_sl_value = 5000.0                # exit when combined loss > ₹5000
+overall_target_enabled = true
+overall_target_type = "percent_of_premium"
+overall_target_value = 60.0              # lock in when 60% of premium captured

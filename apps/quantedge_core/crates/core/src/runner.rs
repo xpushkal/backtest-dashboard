@@ -195,23 +195,34 @@ impl SimRunner {
         }
     }
 
-    /// Check exit conditions in priority order.
+    /// Check exit conditions in strict priority order.
+    ///
+    /// OCO (One-Cancels-Other) is implicit in the priority chain:
+    /// - If per-leg SL fires (priority 1), target (priority 3) is never checked
+    /// - If combined SL fires (priority 2), per-leg target is cancelled
+    /// - SL always takes precedence over target on the same bar
     fn check_exits(
         config: &StrategyConfig,
         pos: &Position,
         time: NaiveTime,
     ) -> Option<ExitReason> {
-        // Priority 1: Per-leg SL
+        // Priority 1: Per-leg SL (hardest limit)
         for leg in &pos.legs {
             if let Some(r) = leg.check_sl() {
                 return Some(r);
             }
         }
 
-        // Priority 2: Overall SL (Phase 3 — check combined PnL)
-        // Stub: only if overall_sl_enabled
-        if config.overall.overall_sl_enabled {
-            // Will be implemented in Phase 3
+        // Priority 2: Combined / Overall SL
+        let monitor = crate::strategy::CombinedSlMonitor::new(&config.overall);
+        let total_pnl = pos.total_unrealized_pnl();
+        let total_entry_premium: f64 = pos
+            .legs
+            .iter()
+            .map(|l| l.entry_price * l.quantity())
+            .sum();
+        if let Some(r) = monitor.check_overall_sl(total_pnl, total_entry_premium) {
+            return Some(r);
         }
 
         // Priority 3: Per-leg target
@@ -221,7 +232,12 @@ impl SimRunner {
             }
         }
 
-        // Priority 4: Time exit
+        // Priority 4: Overall target
+        if let Some(r) = monitor.check_overall_target(total_pnl, total_entry_premium) {
+            return Some(r);
+        }
+
+        // Priority 5: Time exit (lowest priority)
         if time >= config.exit_time() {
             return Some(ExitReason::TimeExit);
         }
@@ -525,5 +541,185 @@ overall_sl_enabled = false
         let result = SimRunner::run(&config, &bars, 15);
         assert_eq!(result.trades.len(), 1);
         assert_eq!(result.trades[0].exit_reason, ExitReason::EndOfData);
+    }
+
+    // ─── Multi-Leg Tests ────────────────────────────────────
+
+    const STRADDLE_TOML: &str = r#"
+[strategy]
+name = "Short Straddle"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+brokerage_per_lot = 40.0
+slippage_model = "fixed_pts"
+slippage_value = 1.0
+stt_on_sell = true
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+strike_mode = "atm_offset"
+strike_offset = 0
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 150.0
+
+[[legs]]
+option_type = "PE"
+position = "sell"
+lots = 1
+strike_mode = "atm_offset"
+strike_offset = 0
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 150.0
+
+[overall]
+overall_sl_enabled = true
+overall_sl_type = "percent_of_premium"
+overall_sl_value = 60.0
+overall_target_enabled = true
+overall_target_type = "percent_of_premium"
+overall_target_value = 50.0
+"#;
+
+    /// Generate bars for a straddle day (CE + PE at each timestamp).
+    fn make_straddle_bars(
+        date: NaiveDate,
+        ce_entry: f64,
+        pe_entry: f64,
+        ce_mid: f64,
+        pe_mid: f64,
+        ce_exit: f64,
+        pe_exit: f64,
+    ) -> Vec<SimBar> {
+        let spot = 48000.0;
+        vec![
+            // Entry
+            SimBar { date, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: ce_entry, spot },
+            SimBar { date, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(), option_type: "PE".to_string(), strike_offset: 0, close: pe_entry, spot },
+            // Mid-day
+            SimBar { date, time: NaiveTime::from_hms_opt(12, 0, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: ce_mid, spot: spot + 100.0 },
+            SimBar { date, time: NaiveTime::from_hms_opt(12, 0, 0).unwrap(), option_type: "PE".to_string(), strike_offset: 0, close: pe_mid, spot: spot + 100.0 },
+            // Exit
+            SimBar { date, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: ce_exit, spot: spot - 50.0 },
+            SimBar { date, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(), option_type: "PE".to_string(), strike_offset: 0, close: pe_exit, spot: spot - 50.0 },
+        ]
+    }
+
+    #[test]
+    fn test_straddle_opens_both_legs() {
+        let config = StrategyConfig::from_toml_str(STRADDLE_TOML).unwrap();
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        // Both legs profitable, no SL hit
+        let bars = make_straddle_bars(date, 200.0, 180.0, 190.0, 170.0, 180.0, 160.0);
+        let result = SimRunner::run(&config, &bars, 15);
+        assert_eq!(result.trades.len(), 2); // one per leg
+    }
+
+    #[test]
+    fn test_combined_sl_triggers() {
+        let config = StrategyConfig::from_toml_str(STRADDLE_TOML).unwrap();
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        // CE entry=200, PE entry=180. Total premium = (200+180)*15 = 5700 (with slippage: ~199+179)
+        // Mid: CE=350, PE=300 → big loss on both legs.
+        // CE PnL ≈ (199-350)*15 = -2265, PE PnL ≈ (179-300)*15 = -1815
+        // Total PnL ≈ -4080. Total entry premium ≈ (199+179)*15 = 5670
+        // Loss% = 4080/5670*100 ≈ 72% > 60% → CombinedSl
+        let bars = make_straddle_bars(date, 200.0, 180.0, 350.0, 300.0, 180.0, 160.0);
+        let result = SimRunner::run(&config, &bars, 15);
+        assert_eq!(result.trades.len(), 2);
+        assert_eq!(result.trades[0].exit_reason, ExitReason::CombinedSl);
+        assert_eq!(result.trades[1].exit_reason, ExitReason::CombinedSl);
+    }
+
+    #[test]
+    fn test_overall_target_triggers() {
+        let config = StrategyConfig::from_toml_str(STRADDLE_TOML).unwrap();
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        // Both legs very profitable → overall target 50% hit
+        // CE entry~199, PE entry~179. Mid: CE=90, PE=80
+        // CE PnL = (199-90)*15 = 1635, PE PnL = (179-80)*15 = 1485
+        // Total PnL = 3120. Premium = (199+179)*15 = 5670. 
+        // Profit% = 3120/5670*100 ≈ 55% > 50% → CombinedTarget
+        let bars = make_straddle_bars(date, 200.0, 180.0, 90.0, 80.0, 85.0, 75.0);
+        let result = SimRunner::run(&config, &bars, 15);
+        assert_eq!(result.trades.len(), 2);
+        assert_eq!(result.trades[0].exit_reason, ExitReason::CombinedTarget);
+        assert_eq!(result.trades[1].exit_reason, ExitReason::CombinedTarget);
+    }
+
+    // ─── OCO Tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_oco_sl_cancels_target() {
+        // Scenario: per-leg SL fires (priority 1), target would also fire (priority 3)
+        // Result: StopLoss returned, not Target
+        let toml = r#"
+[strategy]
+name = "OCO Test"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+strike_mode = "atm_offset"
+strike_offset = 0
+stop_loss_enabled = true
+stop_loss_type = "points"
+stop_loss_value = 50.0
+target_profit_enabled = true
+target_profit_type = "points"
+target_profit_value = 10.0
+
+[overall]
+"#;
+        let config = StrategyConfig::from_toml_str(toml).unwrap();
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        // Entry at 200, mid at 280 → SL fires (80pt move > 50pt), but also target would fire
+        // SL has priority → StopLoss
+        let bars = vec![
+            SimBar { date, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: 200.0, spot: 48000.0 },
+            SimBar { date, time: NaiveTime::from_hms_opt(12, 0, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: 280.0, spot: 48280.0 },
+            SimBar { date, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: 260.0, spot: 48260.0 },
+        ];
+        let result = SimRunner::run(&config, &bars, 15);
+        assert_eq!(result.trades[0].exit_reason, ExitReason::StopLoss);
+    }
+
+    #[test]
+    fn test_time_exit_lowest_priority() {
+        // No SL or target configured → time exit
+        let toml = r#"
+[strategy]
+name = "Time Exit Test"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+strike_mode = "atm_offset"
+strike_offset = 0
+
+[overall]
+"#;
+        let config = StrategyConfig::from_toml_str(toml).unwrap();
+        let bars = make_day_bars(
+            NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
+            200.0, 185.0, None,
+        );
+        let result = SimRunner::run(&config, &bars, 15);
+        assert_eq!(result.trades[0].exit_reason, ExitReason::TimeExit);
     }
 }

@@ -70,6 +70,36 @@ impl Default for SlippageModel {
     }
 }
 
+/// Trailing SL mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrailSlMode {
+    /// Lock-in profit floor: ratchets up, never down
+    Lock,
+    /// Dynamic trail: distance from high-water mark
+    Trail,
+}
+
+impl Default for TrailSlMode {
+    fn default() -> Self {
+        TrailSlMode::Trail
+    }
+}
+
+/// Trail unit for Trail mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrailUnit {
+    Points,
+    Percent,
+}
+
+impl Default for TrailUnit {
+    fn default() -> Self {
+        TrailUnit::Percent
+    }
+}
+
 /// Reason a position was exited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -78,6 +108,8 @@ pub enum ExitReason {
     Target,
     TimeExit,
     EndOfData,
+    CombinedSl,
+    CombinedTarget,
 }
 
 // ─── Config Structs ─────────────────────────────────────────
@@ -159,8 +191,10 @@ pub struct LegConfig {
     pub trail_sl_activate_at: f64,
     #[serde(default)]
     pub trail_sl_lock_in: f64,
-    #[serde(default = "default_percent_str")]
-    pub trail_sl_type: String,
+    #[serde(default)]
+    pub trail_sl_mode: TrailSlMode,
+    #[serde(default)]
+    pub trail_sl_unit: TrailUnit,
     #[serde(default)]
     pub trail_sl_value: f64,
 
@@ -225,7 +259,7 @@ fn default_two_u32() -> u32 { 2 }
 fn default_five_u32() -> u32 { 5 }
 fn default_brokerage() -> f64 { 40.0 }
 fn default_expiry_filter() -> String { "weekly".to_string() }
-fn default_percent_str() -> String { "percent".to_string() }
+
 fn default_reentry_mode() -> String { "after_n_bars".to_string() }
 
 fn deserialize_time<'de, D>(deserializer: D) -> Result<NaiveTime, D::Error>
@@ -281,8 +315,33 @@ impl StrategyConfig {
         }
         for (i, leg) in self.legs.iter().enumerate() {
             if leg.lots == 0 {
-                return Err(format!("Leg {} must have lots > 0", i).into());
+                return Err(format!("Leg {}: lots must be > 0", i + 1).into());
             }
+            // Trailing SL validation
+            if leg.trail_sl_enabled && leg.trail_sl_activate_at <= 0.0 {
+                return Err(format!(
+                    "Leg {}: trailing SL enabled but activate_at is 0. Set trail_sl_activate_at > 0.",
+                    i + 1
+                ).into());
+            }
+            // SL value must be positive when enabled
+            if leg.stop_loss_enabled && leg.stop_loss_value <= 0.0 {
+                return Err(format!(
+                    "Leg {}: stop loss enabled but value is 0. Set stop_loss_value > 0.",
+                    i + 1
+                ).into());
+            }
+            // Target value must be positive when enabled
+            if leg.target_profit_enabled && leg.target_profit_value <= 0.0 {
+                return Err(format!(
+                    "Leg {}: target profit enabled but value is 0. Set target_profit_value > 0.",
+                    i + 1
+                ).into());
+            }
+        }
+        // Overall SL with fewer than 2 legs is meaningless
+        if self.overall.overall_sl_enabled && self.legs.len() < 2 {
+            return Err("Overall SL requires at least 2 legs. Use per-leg SL for single-leg strategies.".into());
         }
         Ok(())
     }
@@ -437,5 +496,209 @@ position = "sell"
             SlType::None,
         ];
         assert_eq!(all.len(), 7);
+    }
+
+    // ─── Phase 3 Validation Tests ───────────────────────────
+
+    #[test]
+    fn test_validate_trailing_sl_no_activate() {
+        let toml = r#"
+[strategy]
+name = "Bad Trail"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+trail_sl_enabled = true
+trail_sl_activate_at = 0.0
+
+[overall]
+"#;
+        let result = StrategyConfig::from_toml_str(toml);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("trailing SL enabled but activate_at is 0"), "Got: {}", err);
+    }
+
+    #[test]
+    fn test_validate_sl_zero_value() {
+        let toml = r#"
+[strategy]
+name = "Bad SL"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+stop_loss_enabled = true
+stop_loss_type = "points"
+stop_loss_value = 0.0
+
+[overall]
+"#;
+        let result = StrategyConfig::from_toml_str(toml);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("stop loss enabled but value is 0"), "Got: {}", err);
+    }
+
+    #[test]
+    fn test_validate_overall_sl_single_leg() {
+        let toml = r#"
+[strategy]
+name = "Bad Overall"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+
+[overall]
+overall_sl_enabled = true
+overall_sl_type = "percent_of_premium"
+overall_sl_value = 60.0
+"#;
+        let result = StrategyConfig::from_toml_str(toml);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Overall SL requires at least 2 legs"), "Got: {}", err);
+    }
+
+    #[test]
+    fn test_validate_straddle_passes() {
+        let toml = r#"
+[strategy]
+name = "Short Straddle"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 100.0
+
+[[legs]]
+option_type = "PE"
+position = "sell"
+lots = 1
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 100.0
+
+[overall]
+overall_sl_enabled = true
+overall_sl_type = "percent_of_premium"
+overall_sl_value = 60.0
+overall_target_enabled = true
+overall_target_type = "percent_of_premium"
+overall_target_value = 50.0
+"#;
+        let config = StrategyConfig::from_toml_str(toml);
+        assert!(config.is_ok(), "Straddle should validate: {:?}", config.err());
+    }
+
+    #[test]
+    fn test_validate_iron_condor_passes() {
+        let toml = r#"
+[strategy]
+name = "Iron Condor"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+strike_mode = "atm_offset"
+strike_offset = 5
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 100.0
+
+[[legs]]
+option_type = "CE"
+position = "buy"
+lots = 1
+strike_mode = "atm_offset"
+strike_offset = 10
+
+[[legs]]
+option_type = "PE"
+position = "sell"
+lots = 1
+strike_mode = "atm_offset"
+strike_offset = -5
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 100.0
+
+[[legs]]
+option_type = "PE"
+position = "buy"
+lots = 1
+strike_mode = "atm_offset"
+strike_offset = -10
+
+[overall]
+overall_sl_enabled = true
+overall_sl_type = "combined_premium"
+overall_sl_value = 5000.0
+"#;
+        let config = StrategyConfig::from_toml_str(toml).unwrap();
+        assert_eq!(config.legs.len(), 4);
+    }
+
+    #[test]
+    fn test_invalid_toml_rejected() {
+        let result = StrategyConfig::from_toml_str("[strategy]\nname = 123");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_trail_sl_mode_parsing() {
+        let toml = r#"
+[strategy]
+name = "Trail Lock Test"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+trail_sl_enabled = true
+trail_sl_activate_at = 30.0
+trail_sl_lock_in = 50.0
+trail_sl_mode = "lock"
+trail_sl_unit = "percent"
+trail_sl_value = 0.0
+
+[overall]
+"#;
+        let config = StrategyConfig::from_toml_str(toml).unwrap();
+        assert_eq!(config.legs[0].trail_sl_mode, TrailSlMode::Lock);
+        assert_eq!(config.legs[0].trail_sl_unit, TrailUnit::Percent);
     }
 }

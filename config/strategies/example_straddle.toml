@@ -1,0 +1,52 @@
+# ─── Short Straddle — BankNifty Weekly ───────────────────────
+# Sell ATM CE + ATM PE, collect premium.
+# Combined SL caps total loss; individual leg SL protects against one-sided moves.
+
+[strategy]
+name = "Short Straddle BN Weekly"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+expiry_filter = "weekly"
+trade_on_expiry = true
+max_concurrent_trades = 1
+capital = 500000.0
+brokerage_per_lot = 40.0
+slippage_model = "fixed_pts"
+slippage_value = 1.0
+stt_on_sell = true
+
+# ── Leg 1: Sell ATM Call ─────────────────────────────────────
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+expiry = "weekly"
+strike_mode = "atm_offset"
+strike_offset = 0
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 100.0
+target_profit_enabled = false
+
+# ── Leg 2: Sell ATM Put ──────────────────────────────────────
+[[legs]]
+option_type = "PE"
+position = "sell"
+lots = 1
+expiry = "weekly"
+strike_mode = "atm_offset"
+strike_offset = 0
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 100.0
+target_profit_enabled = false
+
+# ── Overall Exit ─────────────────────────────────────────────
+[overall]
+overall_sl_enabled = true
+overall_sl_type = "percent_of_premium"
+overall_sl_value = 60.0                  # exit all legs when combined loss > 60%
+overall_target_enabled = true
+overall_target_type = "percent_of_premium"
+overall_target_value = 50.0              # exit all legs when combined profit > 50%
