@@ -3,7 +3,8 @@
 //! A `Leg` represents a single option position (CE/PE, buy/sell) with
 //! mark-to-market tracking and stop-loss state management.
 
-use crate::config::{ExitReason, LegConfig, PositionSide, SlType};
+use crate::config::{ExitReason, LegConfig, PositionSide};
+use crate::sl_types::{is_sl_triggered, is_target_triggered, SlContext};
 
 /// Stop-loss state machine.
 ///
@@ -141,6 +142,21 @@ impl Leg {
         }
     }
 
+    /// Build SL evaluation context from leg state.
+    fn make_sl_context(&self) -> SlContext {
+        SlContext {
+            entry_price: self.entry_price,
+            current_price: self.current_price,
+            entry_spot: self.entry_spot,
+            current_spot: self.current_spot,
+            quantity: self.quantity(),
+            lots: self.lots,
+            lot_size: self.lot_size,
+            direction: self.direction(),
+            unrealized_pnl: self.unrealized_pnl,
+        }
+    }
+
     /// Check if the fixed SL has been hit.
     pub fn check_sl(&self) -> Option<ExitReason> {
         // If trailing SL already triggered, return that
@@ -152,32 +168,8 @@ impl Leg {
             return None;
         }
 
-        let triggered = match self.config.stop_loss_type {
-            SlType::Points => {
-                // For sell: loss when price rises by X points
-                // For buy: loss when price drops by X points
-                let price_move = (self.current_price - self.entry_price) * -self.direction();
-                price_move >= self.config.stop_loss_value
-            }
-            SlType::PercentOfPremium => {
-                // Loss as % of entry premium
-                let loss_pct = if self.entry_price > 0.0 {
-                    (-self.unrealized_pnl / (self.entry_price * self.quantity())) * 100.0
-                } else {
-                    0.0
-                };
-                loss_pct >= self.config.stop_loss_value
-            }
-            SlType::IndexPoints => {
-                // Spot moved X points against position
-                let spot_move = (self.current_spot - self.entry_spot) * -self.direction();
-                spot_move >= self.config.stop_loss_value
-            }
-            // PercentOfMargin, DeltaBreach, CombinedPremium → Phase 3+
-            _ => false,
-        };
-
-        if triggered {
+        let ctx = self.make_sl_context();
+        if is_sl_triggered(&self.config.stop_loss_type, self.config.stop_loss_value, &ctx) {
             Some(ExitReason::StopLoss)
         } else {
             None
@@ -190,23 +182,8 @@ impl Leg {
             return None;
         }
 
-        let triggered = match self.config.target_profit_type {
-            SlType::PercentOfPremium => {
-                let profit_pct = if self.entry_price > 0.0 {
-                    (self.unrealized_pnl / (self.entry_price * self.quantity())) * 100.0
-                } else {
-                    0.0
-                };
-                profit_pct >= self.config.target_profit_value
-            }
-            SlType::Points => {
-                let price_move = (self.current_price - self.entry_price) * self.direction();
-                price_move >= self.config.target_profit_value
-            }
-            _ => false,
-        };
-
-        if triggered {
+        let ctx = self.make_sl_context();
+        if is_target_triggered(&self.config.target_profit_type, self.config.target_profit_value, &ctx) {
             Some(ExitReason::Target)
         } else {
             None
@@ -219,7 +196,7 @@ impl Leg {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{OptionType, StrikeMode};
+    use crate::config::{OptionType, SlType, StrikeMode};
 
     fn make_leg_config(
         option_type: OptionType,

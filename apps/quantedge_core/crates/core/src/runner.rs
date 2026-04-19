@@ -195,23 +195,34 @@ impl SimRunner {
         }
     }
 
-    /// Check exit conditions in priority order.
+    /// Check exit conditions in strict priority order.
+    ///
+    /// OCO (One-Cancels-Other) is implicit in the priority chain:
+    /// - If per-leg SL fires (priority 1), target (priority 3) is never checked
+    /// - If combined SL fires (priority 2), per-leg target is cancelled
+    /// - SL always takes precedence over target on the same bar
     fn check_exits(
         config: &StrategyConfig,
         pos: &Position,
         time: NaiveTime,
     ) -> Option<ExitReason> {
-        // Priority 1: Per-leg SL
+        // Priority 1: Per-leg SL (hardest limit)
         for leg in &pos.legs {
             if let Some(r) = leg.check_sl() {
                 return Some(r);
             }
         }
 
-        // Priority 2: Overall SL (Phase 3 — check combined PnL)
-        // Stub: only if overall_sl_enabled
-        if config.overall.overall_sl_enabled {
-            // Will be implemented in Phase 3
+        // Priority 2: Combined / Overall SL
+        let monitor = crate::strategy::CombinedSlMonitor::new(&config.overall);
+        let total_pnl = pos.total_unrealized_pnl();
+        let total_entry_premium: f64 = pos
+            .legs
+            .iter()
+            .map(|l| l.entry_price * l.quantity())
+            .sum();
+        if let Some(r) = monitor.check_overall_sl(total_pnl, total_entry_premium) {
+            return Some(r);
         }
 
         // Priority 3: Per-leg target
@@ -221,7 +232,12 @@ impl SimRunner {
             }
         }
 
-        // Priority 4: Time exit
+        // Priority 4: Overall target
+        if let Some(r) = monitor.check_overall_target(total_pnl, total_entry_premium) {
+            return Some(r);
+        }
+
+        // Priority 5: Time exit (lowest priority)
         if time >= config.exit_time() {
             return Some(ExitReason::TimeExit);
         }

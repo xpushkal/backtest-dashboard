@@ -8,6 +8,8 @@ pub mod execution;
 pub mod leg;
 pub mod position;
 pub mod runner;
+pub mod sl_types;
+pub mod strategy;
 pub mod strike;
 
 pub use config::{
@@ -18,4 +20,6 @@ pub use execution::ExecutionEngine;
 pub use leg::{Leg, SlState};
 pub use position::{ClosedTrade, Position, PositionSnapshot};
 pub use runner::{RunResult, SimBar, SimRunner};
+pub use sl_types::{is_sl_triggered, is_target_triggered, SlContext};
+pub use strategy::CombinedSlMonitor;
 pub use strike::StrikeSelector;

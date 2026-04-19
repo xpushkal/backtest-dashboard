@@ -78,6 +78,8 @@ pub enum ExitReason {
     Target,
     TimeExit,
     EndOfData,
+    CombinedSl,
+    CombinedTarget,
 }
 
 // ─── Config Structs ─────────────────────────────────────────

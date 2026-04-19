@@ -149,8 +149,8 @@ fn convert_trades(result: &RunResult) -> Vec<TradeRecord> {
             stt: t.stt,
             slippage_cost: t.slippage_cost,
             exit_reason: match t.exit_reason {
-                ExitReason::StopLoss => MetricExitReason::StopLoss,
-                ExitReason::Target => MetricExitReason::Target,
+                ExitReason::StopLoss | ExitReason::CombinedSl => MetricExitReason::StopLoss,
+                ExitReason::Target | ExitReason::CombinedTarget => MetricExitReason::Target,
                 ExitReason::TimeExit => MetricExitReason::TimeExit,
                 ExitReason::EndOfData => MetricExitReason::EndOfData,
             },
