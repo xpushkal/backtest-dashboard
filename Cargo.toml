@@ -21,3 +21,4 @@ statrs = "0.17"
 rayon = "1.10"
 rustler = "0.37"
 criterion = "0.5"
+clap = { version = "4", features = ["derive"] }
