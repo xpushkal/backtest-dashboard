@@ -1,0 +1,15 @@
+[package]
+name = "quantedge-nif"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+quantedge-core = { path = "../core" }
+quantedge-metrics = { path = "../metrics" }
+quantedge-portfolio = { path = "../portfolio" }
+quantedge-optimizer = { path = "../optimizer" }
+rustler = { workspace = true }
+serde_json = { workspace = true }

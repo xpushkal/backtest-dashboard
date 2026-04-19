@@ -1,0 +1,41 @@
+# QuantEdge Lot Sizes
+# Source: NSE/BSE official circulars, verified April 2026
+#
+# NIFTY: 50 → 25 (Apr 26, 2024, NSE Circular 37/2024) → 75 (Nov 20, 2024, SEBI ₹15L min)
+# BANKNIFTY: 15 → 30 (Nov 20, 2024, SEBI ₹15L min)
+# SENSEX: 10 → 20 (Nov 20, 2024, BSE circular, SEBI ₹15L min)
+
+[[NIFTY]]
+from = "2000-01-01"
+to   = "2024-04-25"
+size = 50
+
+[[NIFTY]]
+from = "2024-04-26"
+to   = "2024-11-19"
+size = 25
+
+[[NIFTY]]
+from = "2024-11-20"
+to   = "2099-12-31"
+size = 75
+
+[[BANKNIFTY]]
+from = "2000-01-01"
+to   = "2024-11-19"
+size = 15
+
+[[BANKNIFTY]]
+from = "2024-11-20"
+to   = "2099-12-31"
+size = 30
+
+[[SENSEX]]
+from = "2000-01-01"
+to   = "2024-11-19"
+size = 10
+
+[[SENSEX]]
+from = "2024-11-20"
+to   = "2099-12-31"
+size = 20

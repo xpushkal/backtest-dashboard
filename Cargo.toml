@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = [
+  "apps/quantedge_core/crates/data",
+  "apps/quantedge_core/crates/core",
+  "apps/quantedge_core/crates/greeks",
+  "apps/quantedge_core/crates/metrics",
+  "apps/quantedge_core/crates/portfolio",
+  "apps/quantedge_core/crates/optimizer",
+  "apps/quantedge_core/crates/nif",
+]
+
+[workspace.dependencies]
+polars = { version = "0.53", features = ["lazy", "parquet", "csv"] }
+chrono = { version = "0.4", features = ["serde"] }
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ndarray = "0.16"
+statrs = "0.17"
+rayon = "1.10"
+rustler = "0.37"
+criterion = "0.5"
