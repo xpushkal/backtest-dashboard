@@ -1,1 +1,13 @@
 Data
+
+# Rust
+target/
+
+# Data (large files)
+data/raw/
+data/parquet/
+
+# Python
+__pycache__/
+*.pyc
+.venv/

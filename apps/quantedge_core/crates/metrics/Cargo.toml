@@ -1,0 +1,11 @@
+[package]
+name = "quantedge-metrics"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+quantedge-data = { path = "../data" }
+quantedge-greeks = { path = "../greeks" }
+statrs = { workspace = true }
+ndarray = { workspace = true }
+chrono = { workspace = true }

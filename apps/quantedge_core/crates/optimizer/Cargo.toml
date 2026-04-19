@@ -1,0 +1,9 @@
+[package]
+name = "quantedge-optimizer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+quantedge-core = { path = "../core" }
+quantedge-metrics = { path = "../metrics" }
+rayon = { workspace = true }
