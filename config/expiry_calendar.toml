@@ -1,17 +1,35 @@
+# QuantEdge Expiry Calendar
+# Source: NSE/BSE official circulars, verified April 2026
+#
+# BANKNIFTY:
+#   - Weekly on Thursday until Sep 3, 2023
+#   - Weekly on Wednesday from Sep 4, 2023 (NSE circular, effective trade date)
+#   - Last weekly expiry: Nov 13, 2024 (SEBI single-index weekly rule)
+#   - Monthly only from Nov 14, 2024 (last Wednesday of month)
+#
+# NIFTY:
+#   - Weekly on Thursday (retained as NSE's single weekly index)
+#   - No expiry day change in 2024
+#
+# SENSEX:
+#   - Weekly on Friday until Dec 31, 2024
+#   - Weekly on Tuesday from Jan 1, 2025 (BSE circular)
+#   - Retained as BSE's single weekly index
+
 [BANKNIFTY]
 transitions = [
-  { from = "2000-01-01", to = "2024-10-31", type = "weekly",  day = "Wednesday"      },
-  { from = "2024-11-01", to = "2099-12-31", type = "monthly", day = "last_thursday"  },
+  { from = "2000-01-01", to = "2023-09-03", type = "weekly",  day = "Thursday"        },
+  { from = "2023-09-04", to = "2024-11-13", type = "weekly",  day = "Wednesday"       },
+  { from = "2024-11-14", to = "2099-12-31", type = "monthly", day = "last_wednesday"  },
 ]
 
 [NIFTY]
 transitions = [
-  { from = "2000-01-01", to = "2024-10-02", type = "weekly",  day = "Thursday"       },
-  { from = "2024-10-03", to = "2099-12-31", type = "monthly", day = "last_thursday"  },
+  { from = "2000-01-01", to = "2099-12-31", type = "weekly",  day = "Thursday"        },
 ]
 
 [SENSEX]
 transitions = [
-  { from = "2000-01-01", to = "2024-09-17", type = "weekly",  day = "Friday"         },
-  { from = "2024-09-18", to = "2099-12-31", type = "monthly", day = "last_friday"    },
+  { from = "2000-01-01", to = "2024-12-31", type = "weekly",  day = "Friday"          },
+  { from = "2025-01-01", to = "2099-12-31", type = "weekly",  day = "Tuesday"         },
 ]
