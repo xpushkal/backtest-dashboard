@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 quantedge-data = { path = "../data" }
 quantedge-greeks = { path = "../greeks" }
+serde = { workspace = true }
+serde_json = { workspace = true }
 statrs = { workspace = true }
 ndarray = { workspace = true }
 chrono = { workspace = true }

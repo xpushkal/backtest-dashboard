@@ -2417,6 +2417,8 @@ dependencies = [
  "ndarray",
  "quantedge-data",
  "quantedge-greeks",
+ "serde",
+ "serde_json",
  "statrs",
 ]
 
