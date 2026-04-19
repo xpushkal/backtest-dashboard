@@ -70,6 +70,36 @@ impl Default for SlippageModel {
     }
 }
 
+/// Trailing SL mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrailSlMode {
+    /// Lock-in profit floor: ratchets up, never down
+    Lock,
+    /// Dynamic trail: distance from high-water mark
+    Trail,
+}
+
+impl Default for TrailSlMode {
+    fn default() -> Self {
+        TrailSlMode::Trail
+    }
+}
+
+/// Trail unit for Trail mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrailUnit {
+    Points,
+    Percent,
+}
+
+impl Default for TrailUnit {
+    fn default() -> Self {
+        TrailUnit::Percent
+    }
+}
+
 /// Reason a position was exited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -161,8 +191,10 @@ pub struct LegConfig {
     pub trail_sl_activate_at: f64,
     #[serde(default)]
     pub trail_sl_lock_in: f64,
-    #[serde(default = "default_percent_str")]
-    pub trail_sl_type: String,
+    #[serde(default)]
+    pub trail_sl_mode: TrailSlMode,
+    #[serde(default)]
+    pub trail_sl_unit: TrailUnit,
     #[serde(default)]
     pub trail_sl_value: f64,
 
@@ -227,7 +259,7 @@ fn default_two_u32() -> u32 { 2 }
 fn default_five_u32() -> u32 { 5 }
 fn default_brokerage() -> f64 { 40.0 }
 fn default_expiry_filter() -> String { "weekly".to_string() }
-fn default_percent_str() -> String { "percent".to_string() }
+
 fn default_reentry_mode() -> String { "after_n_bars".to_string() }
 
 fn deserialize_time<'de, D>(deserializer: D) -> Result<NaiveTime, D::Error>
