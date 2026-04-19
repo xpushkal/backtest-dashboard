@@ -1,0 +1,17 @@
+[BANKNIFTY]
+transitions = [
+  { from = "2000-01-01", to = "2024-10-31", type = "weekly",  day = "Wednesday"      },
+  { from = "2024-11-01", to = "2099-12-31", type = "monthly", day = "last_thursday"  },
+]
+
+[NIFTY]
+transitions = [
+  { from = "2000-01-01", to = "2024-10-02", type = "weekly",  day = "Thursday"       },
+  { from = "2024-10-03", to = "2099-12-31", type = "monthly", day = "last_thursday"  },
+]
+
+[SENSEX]
+transitions = [
+  { from = "2000-01-01", to = "2024-09-17", type = "weekly",  day = "Friday"         },
+  { from = "2024-09-18", to = "2099-12-31", type = "monthly", day = "last_friday"    },
+]
