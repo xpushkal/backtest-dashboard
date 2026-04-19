@@ -2,7 +2,7 @@
 //!
 //! Run with: `cargo bench -p quantedge-core`
 
-use chrono::{NaiveDate, NaiveTime};
+use chrono::{Datelike, NaiveDate, NaiveTime};
 use criterion::{criterion_group, criterion_main, Criterion};
 use quantedge_core::runner::{SimBar, SimRunner};
 use quantedge_core::StrategyConfig;
