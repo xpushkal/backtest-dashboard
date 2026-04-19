@@ -1,0 +1,34 @@
+# QuantEdge Example Strategy: Short ATM Call (Weekly BankNifty)
+#
+# Simple single-leg strategy for testing Phase 2 engine.
+# Sells ATM CE at 09:20, exits at 15:20 or on 100% SL.
+
+[strategy]
+name = "Short ATM Call Weekly"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+expiry_filter = "weekly"
+trade_on_expiry = true
+max_concurrent_trades = 1
+capital = 500000.0
+brokerage_per_lot = 40.0
+slippage_model = "fixed_pts"
+slippage_value = 1.0
+stt_on_sell = true
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+expiry = "weekly"
+strike_mode = "atm_offset"
+strike_offset = 0
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 100.0
+target_profit_enabled = false
+
+[overall]
+overall_sl_enabled = false
+overall_target_enabled = false
