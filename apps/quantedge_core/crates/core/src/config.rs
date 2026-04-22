@@ -100,6 +100,26 @@ impl Default for TrailUnit {
     }
 }
 
+/// Re-entry mode after SL/target hit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReEntryMode {
+    /// Re-enter at next bar open.
+    Asap,
+    /// Re-enter at same clock time next trading day.
+    SameTime,
+    /// Wait N bars then re-enter.
+    AfterNBars,
+    /// Wait for momentum filter to confirm.
+    MomentumConfirm,
+}
+
+impl Default for ReEntryMode {
+    fn default() -> Self {
+        ReEntryMode::AfterNBars
+    }
+}
+
 /// Reason a position was exited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -203,8 +223,8 @@ pub struct LegConfig {
     pub reentry_on_sl: bool,
     #[serde(default)]
     pub reentry_on_target: bool,
-    #[serde(default = "default_reentry_mode")]
-    pub reentry_mode: String,
+    #[serde(default)]
+    pub reentry_mode: ReEntryMode,
     #[serde(default = "default_five_u32")]
     pub reentry_cooldown_bars: u32,
     #[serde(default = "default_two_u32")]
@@ -260,7 +280,7 @@ fn default_five_u32() -> u32 { 5 }
 fn default_brokerage() -> f64 { 40.0 }
 fn default_expiry_filter() -> String { "weekly".to_string() }
 
-fn default_reentry_mode() -> String { "after_n_bars".to_string() }
+// default_reentry_mode removed — ReEntryMode implements Default
 
 fn deserialize_time<'de, D>(deserializer: D) -> Result<NaiveTime, D::Error>
 where
