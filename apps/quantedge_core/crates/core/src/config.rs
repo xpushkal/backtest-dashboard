@@ -363,6 +363,26 @@ impl StrategyConfig {
         if self.overall.overall_sl_enabled && self.legs.len() < 2 {
             return Err("Overall SL requires at least 2 legs. Use per-leg SL for single-leg strategies.".into());
         }
+        // Re-entry validation
+        for (i, leg) in self.legs.iter().enumerate() {
+            if leg.reentry_mode == ReEntryMode::MomentumConfirm && !leg.momentum_filter_enabled {
+                return Err(format!(
+                    "Leg {}: reentry_mode is 'momentum_confirm' but no momentum filter is configured. \
+                     Set momentum_filter_enabled = true.",
+                    i + 1
+                ).into());
+            }
+            if leg.reentry_mode == ReEntryMode::AfterNBars
+                && (leg.reentry_on_sl || leg.reentry_on_target)
+                && leg.reentry_cooldown_bars == 0
+            {
+                return Err(format!(
+                    "Leg {}: reentry_mode is 'after_n_bars' but cooldown_bars is 0. \
+                     Use mode 'asap' for immediate re-entry, or set cooldown_bars > 0.",
+                    i + 1
+                ).into());
+            }
+        }
         Ok(())
     }
 
@@ -720,5 +740,82 @@ trail_sl_value = 0.0
         let config = StrategyConfig::from_toml_str(toml).unwrap();
         assert_eq!(config.legs[0].trail_sl_mode, TrailSlMode::Lock);
         assert_eq!(config.legs[0].trail_sl_unit, TrailUnit::Percent);
+    }
+
+    #[test]
+    fn test_reentry_momentum_confirm_without_filter_rejected() {
+        let toml = r#"
+[strategy]
+name = "Invalid MomentumConfirm"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+reentry_on_sl = true
+reentry_mode = "momentum_confirm"
+momentum_filter_enabled = false
+
+[overall]
+"#;
+        let result = StrategyConfig::from_toml_str(toml);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("momentum_confirm"));
+    }
+
+    #[test]
+    fn test_reentry_after_n_bars_zero_cooldown_rejected() {
+        let toml = r#"
+[strategy]
+name = "Invalid AfterNBars"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+reentry_on_sl = true
+reentry_mode = "after_n_bars"
+reentry_cooldown_bars = 0
+
+[overall]
+"#;
+        let result = StrategyConfig::from_toml_str(toml);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cooldown_bars"));
+    }
+
+    #[test]
+    fn test_reentry_asap_valid() {
+        let toml = r#"
+[strategy]
+name = "Valid ASAP Reentry"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 50.0
+reentry_on_sl = true
+reentry_mode = "asap"
+reentry_max_attempts = 2
+
+[overall]
+"#;
+        let result = StrategyConfig::from_toml_str(toml);
+        assert!(result.is_ok());
     }
 }

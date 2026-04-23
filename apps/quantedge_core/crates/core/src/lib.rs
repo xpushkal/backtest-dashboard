@@ -6,6 +6,7 @@
 pub mod config;
 pub mod execution;
 pub mod leg;
+pub mod momentum;
 pub mod position;
 pub mod reentry;
 pub mod runner;
@@ -25,3 +26,4 @@ pub use runner::{RunResult, SimBar, SimRunner};
 pub use sl_types::{is_sl_triggered, is_target_triggered, SlContext};
 pub use strategy::CombinedSlMonitor;
 pub use strike::StrikeSelector;
+pub use momentum::{MomentumEngine, MomentumFilterConfig, MomentumSignal};
