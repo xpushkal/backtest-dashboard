@@ -132,7 +132,7 @@ mod tests {
             trail_sl_value: 0.0,
             reentry_on_sl: false,
             reentry_on_target: false,
-            reentry_mode: "after_n_bars".to_string(),
+            reentry_mode: crate::config::ReEntryMode::AfterNBars,
             reentry_cooldown_bars: 5,
             reentry_max_attempts: 2,
             momentum_filter_enabled: false,

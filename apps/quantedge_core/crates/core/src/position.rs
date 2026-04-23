@@ -75,6 +75,8 @@ pub struct ClosedTrade {
     pub pnl_net: f64,
     pub exit_reason: ExitReason,
     pub bars_held: u32,
+    /// Re-entry attempt number (0 = initial entry, 1+ = re-entries).
+    pub reentry_attempt: u32,
 }
 
 impl ClosedTrade {
@@ -91,6 +93,7 @@ impl ClosedTrade {
         brokerage: f64,
         stt: f64,
         slippage_cost: f64,
+        reentry_attempt: u32,
     ) -> Self {
         let direction = match leg.config.position {
             PositionSide::Buy => 1.0,
@@ -120,6 +123,7 @@ impl ClosedTrade {
             pnl_net,
             exit_reason,
             bars_held: leg.bars_held,
+            reentry_attempt,
         }
     }
 }
@@ -165,7 +169,7 @@ mod tests {
             trail_sl_value: 0.0,
             reentry_on_sl: false,
             reentry_on_target: false,
-            reentry_mode: "after_n_bars".to_string(),
+            reentry_mode: crate::config::ReEntryMode::AfterNBars,
             reentry_cooldown_bars: 5,
             reentry_max_attempts: 2,
             momentum_filter_enabled: false,
@@ -211,6 +215,7 @@ mod tests {
             pnl_net: 750.0 - 80.0 - 1.40625 - 30.0,
             exit_reason: ExitReason::TimeExit,
             bars_held: 360,
+            reentry_attempt: 0,
         };
         let expected_net = 750.0 - 80.0 - 1.40625 - 30.0;
         assert!((trade.pnl_net - expected_net).abs() < 0.001);
