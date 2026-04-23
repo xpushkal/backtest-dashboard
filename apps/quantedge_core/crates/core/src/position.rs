@@ -215,6 +215,7 @@ mod tests {
             pnl_net: 750.0 - 80.0 - 1.40625 - 30.0,
             exit_reason: ExitReason::TimeExit,
             bars_held: 360,
+            reentry_attempt: 0,
         };
         let expected_net = 750.0 - 80.0 - 1.40625 - 30.0;
         assert!((trade.pnl_net - expected_net).abs() < 0.001);

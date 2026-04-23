@@ -3,10 +3,11 @@
 //! Iterates over bars grouped by (date, time), opens/closes positions,
 //! and captures equity snapshots. This is the heart of the backtester.
 
-use crate::config::{ExitReason, PositionSide, StrategyConfig};
+use crate::config::{ExitReason, PositionSide, ReEntryMode, StrategyConfig};
 use crate::execution::ExecutionEngine;
 use crate::leg::Leg;
 use crate::position::{ClosedTrade, Position, PositionSnapshot};
+use crate::reentry::ReEntryTracker;
 use crate::strike::StrikeSelector;
 use chrono::{NaiveDate, NaiveTime};
 use std::collections::BTreeMap;
@@ -57,6 +58,14 @@ impl SimRunner {
         let mut position: Option<Position> = None;
         let mut cumulative_pnl: f64 = 0.0;
 
+        // Re-entry trackers: one per leg
+        let mut trackers: Vec<ReEntryTracker> = config
+            .legs
+            .iter()
+            .map(|leg| ReEntryTracker::new(leg))
+            .collect();
+        let mut reentry_armed = false; // true when we have pending re-entries
+
         // Group bar indices by (date, time)
         let groups = Self::group_by_time(bars);
 
@@ -64,10 +73,44 @@ impl SimRunner {
             let date = *date;
             let time = *time;
 
-            // 1. ENTRY: no open position and time matches entry_time
-            if position.is_none() && time == config.entry_time() {
-                if let Some(pos) = Self::try_open(config, bars, indices, lot_size, date, time) {
-                    position = Some(pos);
+            // Tick re-entry trackers when no position is open
+            if position.is_none() && reentry_armed {
+                for tracker in &mut trackers {
+                    tracker.tick();
+                }
+            }
+
+            // 1. ENTRY: no open position
+            if position.is_none() {
+                let should_enter = if reentry_armed {
+                    // Re-entry: check if any tracker says ready
+                    let any_ready = trackers.iter().any(|t| t.should_reenter());
+                    if any_ready {
+                        match trackers[0].state {
+                            // SameTime: only re-enter at original entry_time
+                            _ if config.legs.iter().any(|l| l.reentry_mode == ReEntryMode::SameTime) => {
+                                time == config.entry_time()
+                            }
+                            _ => true,
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    // Normal entry: at entry_time
+                    time == config.entry_time()
+                };
+
+                if should_enter {
+                    if let Some(pos) = Self::try_open(config, bars, indices, lot_size, date, time) {
+                        if reentry_armed {
+                            for tracker in &mut trackers {
+                                tracker.confirm_reentry();
+                            }
+                            reentry_armed = false;
+                        }
+                        position = Some(pos);
+                    }
                 }
             }
 
@@ -77,15 +120,23 @@ impl SimRunner {
 
                 // 3. EXIT CHECKS (priority: SL → Target → Time)
                 if let Some(reason) = Self::check_exits(config, pos, time) {
+                    // Capture re-entry attempt number before closing
+                    let attempt = trackers.first().map_or(0, |t| t.completed_attempts);
 
                     let closed = Self::close_position(
-                        pos, config, bars, indices, date, time, reason, lot_size,
+                        pos, config, bars, indices, date, time, reason, lot_size, attempt,
                     );
                     for trade in closed {
                         cumulative_pnl += trade.pnl_net;
                         trades.push(trade);
                     }
                     position = None;
+
+                    // Arm re-entry trackers
+                    for tracker in &mut trackers {
+                        tracker.on_exit(&reason);
+                    }
+                    reentry_armed = trackers.iter().any(|t| !t.is_exhausted() && !matches!(t.state, crate::reentry::ReEntryState::Idle));
                 }
             }
 
@@ -105,8 +156,9 @@ impl SimRunner {
         // Close any remaining position at end of data
         if let Some(ref pos) = position {
             if let Some((&(date, time), indices)) = groups.iter().last() {
+                let attempt = trackers.first().map_or(0, |t| t.completed_attempts);
                 let closed = Self::close_position(
-                    pos, config, bars, indices, date, time, ExitReason::EndOfData, lot_size,
+                    pos, config, bars, indices, date, time, ExitReason::EndOfData, lot_size, attempt,
                 );
                 for trade in closed {
                     cumulative_pnl += trade.pnl_net;
@@ -245,7 +297,6 @@ impl SimRunner {
         None
     }
 
-    /// Close position and produce ClosedTrade records.
     fn close_position(
         pos: &Position,
         config: &StrategyConfig,
@@ -255,6 +306,7 @@ impl SimRunner {
         time: NaiveTime,
         reason: ExitReason,
         lot_size: u32,
+        reentry_attempt: u32,
     ) -> Vec<ClosedTrade> {
         let mut trades = Vec::with_capacity(pos.legs.len());
 
@@ -326,6 +378,7 @@ impl SimRunner {
                 brokerage,
                 stt,
                 slippage_cost,
+                reentry_attempt,
             );
             trades.push(trade);
         }
@@ -721,5 +774,225 @@ strike_offset = 0
         );
         let result = SimRunner::run(&config, &bars, 15);
         assert_eq!(result.trades[0].exit_reason, ExitReason::TimeExit);
+    }
+
+    // ─── Re-entry Integration Tests ──────────────────────────
+
+    const REENTRY_TOML_ASAP: &str = r#"
+[strategy]
+name = "Reentry ASAP Test"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+brokerage_per_lot = 0.0
+slippage_model = "fixed_pts"
+slippage_value = 0.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+strike_mode = "atm_offset"
+strike_offset = 0
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 50.0
+reentry_on_sl = true
+reentry_mode = "asap"
+reentry_max_attempts = 2
+reentry_cooldown_bars = 0
+
+[overall]
+"#;
+
+    #[test]
+    fn test_asap_reentry_produces_extra_trade() {
+        // Day 1: SL hit at 11:00, ASAP re-entry opens new position
+        // At exit bar (15:20), the re-entry position closes
+        let d1 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let mut bars = Vec::new();
+
+        // Entry at 09:20, price=200
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 200.0, spot: 48000.0 });
+        // SL trigger at 11:00: price=310 → 55% loss > 50% SL
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(11, 0, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 310.0, spot: 48200.0 });
+        // After re-entry, bar at 13:00
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(13, 0, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 280.0, spot: 48100.0 });
+        // Exit at 15:20
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 250.0, spot: 48050.0 });
+
+        let config = StrategyConfig::from_toml_str(REENTRY_TOML_ASAP).unwrap();
+        let result = SimRunner::run(&config, &bars, 15);
+
+        // Should have 2 trades: initial (SL) + re-entry (TimeExit)
+        assert_eq!(result.trades.len(), 2);
+        assert_eq!(result.trades[0].exit_reason, ExitReason::StopLoss);
+        assert_eq!(result.trades[0].reentry_attempt, 0);
+        assert_eq!(result.trades[1].exit_reason, ExitReason::TimeExit);
+        assert_eq!(result.trades[1].reentry_attempt, 1);
+    }
+
+    #[test]
+    fn test_no_reentry_on_time_exit() {
+        // reentry_on_sl=true but position exits via TimeExit → no re-entry
+        let d1 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let bars = make_day_bars(d1, 200.0, 185.0, None);
+
+        let config = StrategyConfig::from_toml_str(REENTRY_TOML_ASAP).unwrap();
+        let result = SimRunner::run(&config, &bars, 15);
+        assert_eq!(result.trades.len(), 1);
+        assert_eq!(result.trades[0].exit_reason, ExitReason::TimeExit);
+    }
+
+    #[test]
+    fn test_max_attempts_limits_reentry() {
+        // max_attempts=2: initial + 2 re-entries = 3 total trades max
+        let d1 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let mut bars = Vec::new();
+
+        // Entry at 09:20 → SL at 10:00 → re-entry → SL at 11:00 → re-entry → SL at 12:00 → exhausted
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 200.0, spot: 48000.0 });
+        // SL #1 at 10:00
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 310.0, spot: 48200.0 });
+        // Re-entry #1 opens at 10:00 (ASAP), SL #2 at 11:00
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(11, 0, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 480.0, spot: 48400.0 });
+        // Re-entry #2 opens at 11:00 (ASAP), SL #3 at 12:00
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 730.0, spot: 48600.0 });
+        // No more re-entry (exhausted), bar at 15:20
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 600.0, spot: 48500.0 });
+
+        let config = StrategyConfig::from_toml_str(REENTRY_TOML_ASAP).unwrap();
+        let result = SimRunner::run(&config, &bars, 15);
+
+        // 3 SL trades: initial + 2 re-entries, then exhausted
+        assert_eq!(result.trades.len(), 3);
+        assert_eq!(result.trades[0].reentry_attempt, 0);
+        assert_eq!(result.trades[1].reentry_attempt, 1);
+        assert_eq!(result.trades[2].reentry_attempt, 2);
+    }
+
+    #[test]
+    fn test_after_n_bars_reentry_waits() {
+        let toml = r#"
+[strategy]
+name = "Reentry AfterN Test"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+brokerage_per_lot = 0.0
+slippage_model = "fixed_pts"
+slippage_value = 0.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+strike_mode = "atm_offset"
+strike_offset = 0
+stop_loss_enabled = true
+stop_loss_type = "percent_of_premium"
+stop_loss_value = 50.0
+reentry_on_sl = true
+reentry_mode = "after_n_bars"
+reentry_cooldown_bars = 2
+reentry_max_attempts = 1
+
+[overall]
+"#;
+        let d1 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let mut bars = Vec::new();
+
+        // Entry at 09:20
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 200.0, spot: 48000.0 });
+        // SL at 10:00
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 310.0, spot: 48200.0 });
+        // Cooldown bar 1 at 10:30
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(10, 30, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 290.0, spot: 48150.0 });
+        // Cooldown bar 2 at 11:00 → ready
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(11, 0, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 280.0, spot: 48100.0 });
+        // Re-entry opens at 11:30
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(11, 30, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 270.0, spot: 48080.0 });
+        // Exit at 15:20
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 250.0, spot: 48050.0 });
+
+        let config = StrategyConfig::from_toml_str(toml).unwrap();
+        let result = SimRunner::run(&config, &bars, 15);
+
+        // 2 trades: initial SL + re-entry TimeExit
+        assert_eq!(result.trades.len(), 2);
+        assert_eq!(result.trades[0].exit_reason, ExitReason::StopLoss);
+        assert_eq!(result.trades[1].exit_reason, ExitReason::TimeExit);
+        assert_eq!(result.trades[1].reentry_attempt, 1);
+    }
+
+    #[test]
+    fn test_reentry_on_target_hit() {
+        let toml = r#"
+[strategy]
+name = "Reentry on Target"
+underlying = "BANKNIFTY"
+entry_time = "09:20"
+exit_time = "15:20"
+capital = 500000.0
+brokerage_per_lot = 0.0
+slippage_model = "fixed_pts"
+slippage_value = 0.0
+
+[[legs]]
+option_type = "CE"
+position = "sell"
+lots = 1
+strike_mode = "atm_offset"
+strike_offset = 0
+target_profit_enabled = true
+target_profit_type = "percent_of_premium"
+target_profit_value = 30.0
+reentry_on_target = true
+reentry_mode = "asap"
+reentry_max_attempts = 1
+reentry_cooldown_bars = 0
+
+[overall]
+"#;
+        let d1 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let mut bars = Vec::new();
+
+        // Entry at 09:20, price=200
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 200.0, spot: 48000.0 });
+        // Target hit at 11:00: 200→135 = 32.5% profit for sell → exceeds 30%
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(11, 0, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 135.0, spot: 47800.0 });
+        // After re-entry at 13:00
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(13, 0, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 120.0, spot: 47700.0 });
+        // Exit at 15:20
+        bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(),
+            option_type: "CE".to_string(), strike_offset: 0, close: 100.0, spot: 47600.0 });
+
+        let config = StrategyConfig::from_toml_str(toml).unwrap();
+        let result = SimRunner::run(&config, &bars, 15);
+
+        // 2 trades: target hit + re-entry time exit
+        assert_eq!(result.trades.len(), 2);
+        assert_eq!(result.trades[0].exit_reason, ExitReason::Target);
+        assert_eq!(result.trades[1].exit_reason, ExitReason::TimeExit);
     }
 }
