@@ -8,3 +8,5 @@ quantedge-data = { path = "../data" }
 ndarray = { workspace = true }
 statrs = { workspace = true }
 chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

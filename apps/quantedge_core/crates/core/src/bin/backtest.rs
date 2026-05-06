@@ -156,6 +156,7 @@ fn convert_trades(result: &RunResult) -> Vec<TradeRecord> {
             },
             bars_held: t.bars_held,
             exit_date: t.exit_date,
+            reentry_attempt: t.reentry_attempt,
         })
         .collect()
 }

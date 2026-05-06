@@ -2486,6 +2486,8 @@ dependencies = [
  "chrono",
  "ndarray",
  "quantedge-data",
+ "serde",
+ "serde_json",
  "statrs",
 ]
 
