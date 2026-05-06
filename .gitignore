@@ -12,3 +12,22 @@ __pycache__/
 *.pyc
 .venv/
 .DS_Store
+
+# Elixir
+_build/
+deps/
+mix.lock
+*.ez
+*.beam
+erl_crash.dump
+
+# DuckDB
+priv/duckdb/
+
+# Node
+node_modules/
+/apps/quantedge_web/assets/node_modules/
+# NIF binaries (built locally via cargo build)
+apps/quantedge/priv/native/*.so
+apps/quantedge/priv/native/*.dylib
+apps/quantedge/priv/native/*.dll

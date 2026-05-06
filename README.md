@@ -593,30 +593,6 @@ QuantEdge.Optimizer.run_sweep("strategy-uuid", %{
 
 ---
 
-## Frequently Asked Questions
-
-**Q: Why Rust + Elixir instead of Python?**
-
-Python with pandas/numpy can do this but will be 10–50× slower on the simulation kernel. A 4-year backtest that takes 1 second in Rust takes 30–60 seconds in pure Python. For optimizer sweeps across 1,000+ param combos the difference is hours vs minutes.
-
-**Q: Why DuckDB alongside Postgres?**
-
-Postgres is great for transactional data (strategies, run configs, user state). For time-series analytical queries — "give me the monthly PnL heatmap for all runs of this strategy" — DuckDB's columnar engine is dramatically faster. Both serve different access patterns.
-
-**Q: Can I add my own symbol / data?**
-
-Yes. Any symbol with the same CSV schema will work. Add it to `config/lot_sizes.toml` with the correct lot size and pass the symbol name when running the CSV converter. The Rust data layer is symbol-agnostic.
-
-**Q: Is calendar spread support planned?**
-
-Not in V1. Calendar spreads require stitching two different expiry rows, which adds significant complexity to the bar stream builder. It is a V2 feature.
-
-**Q: How accurate is the margin model?**
-
-V1 uses a simplified SPAN approximation (3× premium + index factor). It is directionally accurate for margin-awareness but not exact. Full NSE SPAN file parsing is a V2 enhancement.
-
----
-
 ## License
 
 Private — personal use only. Not for redistribution.

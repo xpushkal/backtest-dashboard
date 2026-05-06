@@ -8,8 +8,13 @@ crate-type = ["cdylib"]
 
 [dependencies]
 quantedge-core = { path = "../core" }
+quantedge-data = { path = "../data" }
 quantedge-metrics = { path = "../metrics" }
+quantedge-greeks = { path = "../greeks" }
 quantedge-portfolio = { path = "../portfolio" }
 quantedge-optimizer = { path = "../optimizer" }
 rustler = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+toml = { workspace = true }
+chrono = { workspace = true }

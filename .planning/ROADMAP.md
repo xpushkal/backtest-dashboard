@@ -147,12 +147,12 @@ Plans:
 **Plans**: 6 plans
 
 Plans:
-- [ ] 06-01: Phoenix umbrella app scaffold and Elixir project structure
-- [ ] 06-02: Rustler NIF crate (run_backtest, run_optimizer, run_portfolio) with dirty_cpu scheduling
-- [ ] 06-03: Postgres Ecto schemas and migrations (strategies, runs)
-- [ ] 06-04: DuckDB schema, GenServer writer, batch insert helpers
-- [ ] 06-05: Oban workers (BacktestWorker, OptimizerWorker, PortfolioWorker) with PubSub integration
-- [ ] 06-06: Integration tests — NIF calls, Oban lifecycle, PubSub delivery
+- [x] 06-01: Phoenix umbrella app scaffold and Elixir project structure
+- [x] 06-02: Rustler NIF crate (run_backtest, run_optimizer, run_portfolio) with dirty_cpu scheduling
+- [x] 06-03: Postgres Ecto schemas and migrations (strategies, runs)
+- [x] 06-04: DuckDB schema, GenServer writer, batch insert helpers
+- [x] 06-05: Oban workers (BacktestWorker, OptimizerWorker, PortfolioWorker) with PubSub integration
+- [x] 06-06: Integration tests — NIF calls, Oban lifecycle, PubSub delivery
 
 ### Phase 7: LiveView UI
 **Goal**: Full web UI — strategy builder, run manager, full results viewer with charts, optimizer dashboard, data explorer. All real-time via LiveView.
