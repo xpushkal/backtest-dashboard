@@ -1,5 +1,5 @@
 defmodule QuantEdgeWeb.OptimizerLive do
-  @moduledoc "Optimizer dashboard with parameter grid config, progress, and results."
+  @moduledoc "Optimizer dashboard with parameter grid config, heatmap visualization, and results."
   use QuantEdgeWeb, :live_view
 
   import QuantEdgeWeb.UiComponents
@@ -24,7 +24,10 @@ defmodule QuantEdgeWeb.OptimizerLive do
      |> assign(:progress, 0.0)
      |> assign(:results, [])
      |> assign(:heatmap_x, nil)
-     |> assign(:heatmap_y, nil)}
+     |> assign(:heatmap_y, nil)
+     |> assign(:heatmap_data, nil)
+     |> assign(:selected_combo, nil)
+     |> assign(:show_tab, :table)}
   end
 
   @impl true
@@ -69,18 +72,50 @@ defmodule QuantEdgeWeb.OptimizerLive do
     end
   end
 
+  def handle_event("switch_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, :show_tab, String.to_existing_atom(tab))}
+  end
+
+  def handle_event("select_heatmap_x", %{"param" => param}, socket) do
+    socket = assign(socket, :heatmap_x, param)
+    {:noreply, rebuild_heatmap(socket)}
+  end
+
+  def handle_event("select_heatmap_y", %{"param" => param}, socket) do
+    socket = assign(socket, :heatmap_y, param)
+    {:noreply, rebuild_heatmap(socket)}
+  end
+
+  def handle_event("heatmap_cell_click", %{"combo_index" => idx}, socket) do
+    combo = Enum.find(socket.assigns.results, fn r -> r["combo_index"] == idx end)
+    {:noreply, assign(socket, :selected_combo, combo)}
+  end
+
+  def handle_event("close_modal", _params, socket) do
+    {:noreply, assign(socket, :selected_combo, nil)}
+  end
+
   @impl true
   def handle_info({:optimizer_progress, _run_id, pct}, socket) do
     {:noreply, assign(socket, :progress, pct)}
   end
 
   def handle_info({:optimizer_completed, _run_id, results}, socket) do
-    {:noreply,
-     socket
-     |> assign(:running, false)
-     |> assign(:progress, 100.0)
-     |> assign(:results, results)
-     |> put_flash(:info, "Optimization complete!")}
+    # Auto-select heatmap axes from first two param names
+    param_names = extract_param_names(results)
+    hx = Enum.at(param_names, 0)
+    hy = Enum.at(param_names, 1, hx)
+
+    socket =
+      socket
+      |> assign(:running, false)
+      |> assign(:progress, 100.0)
+      |> assign(:results, results)
+      |> assign(:heatmap_x, hx)
+      |> assign(:heatmap_y, hy)
+      |> put_flash(:info, "Optimization complete! #{length(results)} results.")
+
+    {:noreply, rebuild_heatmap(socket)}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -172,39 +207,191 @@ defmodule QuantEdgeWeb.OptimizerLive do
           />
         </div>
 
-        <div :if={@results != []} class="card">
-          <div class="card-header">
-            <span class="card-title">Top Results</span>
+        <div :if={@results != []}>
+          <%!-- Tab Switcher --%>
+          <div class="card mb-4" style="padding: 0.5rem 1rem;">
+            <div style="display: flex; gap: 0.5rem;">
+              <button
+                class={"btn btn-sm #{if @show_tab == :table, do: "btn-primary", else: "btn-secondary"}"}
+                phx-click="switch_tab" phx-value-tab="table"
+              >📊 Table</button>
+              <button
+                class={"btn btn-sm #{if @show_tab == :heatmap, do: "btn-primary", else: "btn-secondary"}"}
+                phx-click="switch_tab" phx-value-tab="heatmap"
+              >🗺️ Heatmap</button>
+            </div>
           </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Parameters</th>
-                <th class="col-number">Sharpe</th>
-                <th class="col-number">PnL</th>
-                <th class="col-number">Max DD</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={{result, idx} <- Enum.with_index(Enum.take(@results, 20))}>
-                <td class="text-muted">{idx + 1}</td>
-                <td class="text-mono text-sm">{format_params(result["params"])}</td>
-                <td class="col-number text-mono">{result["sharpe"] || "—"}</td>
-                <td class={"col-number text-mono #{if (result["pnl"] || 0) >= 0, do: "text-profit", else: "text-loss"}"}>
-                  ₹{result["pnl"] || "—"}
-                </td>
-                <td class="col-number text-mono text-loss">{result["max_dd"] || "—"}%</td>
-              </tr>
-            </tbody>
-          </table>
+
+          <%!-- Table View --%>
+          <div :if={@show_tab == :table} class="card">
+            <div class="card-header">
+              <span class="card-title">Top Results ({length(@results)} combos)</span>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Parameters</th>
+                  <th class="col-number">Sharpe</th>
+                  <th class="col-number">PnL</th>
+                  <th class="col-number">Max DD</th>
+                  <th class="col-number">Win%</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={{result, idx} <- Enum.with_index(Enum.take(@results, 20))}>
+                  <td class="text-muted">{idx + 1}</td>
+                  <td class="text-mono text-sm">{format_params(result["params"])}</td>
+                  <td class="col-number text-mono">{format_number(result["sharpe"])}</td>
+                  <td class={"col-number text-mono #{pnl_class(result["total_pnl"])}"}>
+                    ₹{format_number(result["total_pnl"])}
+                  </td>
+                  <td class="col-number text-mono text-loss">{format_number(result["max_dd_pct"])}%</td>
+                  <td class="col-number text-mono">{format_number(result["win_rate"])}%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <%!-- Heatmap View --%>
+          <div :if={@show_tab == :heatmap} class="card">
+            <div class="card-header mb-4">
+              <span class="card-title">Sharpe Heatmap</span>
+            </div>
+
+            <%!-- Axis Selectors --%>
+            <div :if={length(extract_param_names(@results)) >= 2} class="grid-2 mb-4" style="gap: 1rem;">
+              <div class="input-group">
+                <label class="input-label">X Axis</label>
+                <select class="input" phx-change="select_heatmap_x" name="param">
+                  <option :for={p <- extract_param_names(@results)} value={p} selected={p == @heatmap_x}>{p}</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label class="input-label">Y Axis</label>
+                <select class="input" phx-change="select_heatmap_y" name="param">
+                  <option :for={p <- extract_param_names(@results)} value={p} selected={p == @heatmap_y}>{p}</option>
+                </select>
+              </div>
+            </div>
+
+            <%!-- Heatmap Canvas --%>
+            <div
+              :if={@heatmap_data}
+              id="optimizer-heatmap"
+              phx-hook="OptimizerHeatmap"
+              data-heatmap-data={Jason.encode!(@heatmap_data)}
+              style="overflow-x: auto;"
+            />
+
+            <div :if={!@heatmap_data} class="text-center text-muted" style="padding: 2rem;">
+              Need at least 2 parameters for heatmap visualization.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <%!-- Combo Detail Modal --%>
+    <div :if={@selected_combo} class="modal-overlay" phx-click="close_modal">
+      <div class="card" style="max-width: 500px; margin: 10vh auto; position: relative; z-index: 1001;" phx-click-away="close_modal">
+        <div class="flex-between mb-4">
+          <h3>Combo #{@selected_combo["combo_index"]}</h3>
+          <button class="btn btn-sm btn-secondary" phx-click="close_modal">✕</button>
+        </div>
+
+        <div class="mb-4">
+          <h4 class="text-sm text-muted mb-2">Parameters</h4>
+          <div class="grid-2" style="gap: 0.5rem;">
+            <div :for={{k, v} <- @selected_combo["params"] || %{}} class="card" style="background: var(--bg-tertiary); padding: 0.5rem 0.75rem;">
+              <span class="text-sm text-muted">{k}</span>
+              <span class="text-mono" style="display: block;">{v}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-3" style="gap: 0.75rem;">
+          <.stat_card label="Sharpe" value={format_number(@selected_combo["sharpe"])} />
+          <.stat_card label="PnL" value={"₹#{format_number(@selected_combo["total_pnl"])}"} />
+          <.stat_card label="Max DD" value={"#{format_number(@selected_combo["max_dd_pct"])}%"} />
+          <.stat_card label="Win Rate" value={"#{format_number(@selected_combo["win_rate"])}%"} />
+          <.stat_card label="PF" value={format_number(@selected_combo["profit_factor"])} />
+          <.stat_card label="Trades" value={@selected_combo["trade_count"] || 0} />
         </div>
       </div>
     </div>
     """
   end
 
-  # --- Helpers ---
+  # --- Heatmap Helpers ---
+
+  defp rebuild_heatmap(socket) do
+    results = socket.assigns.results
+    hx = socket.assigns.heatmap_x
+    hy = socket.assigns.heatmap_y
+
+    if hx && hy && hx != hy && results != [] do
+      heatmap_data = build_heatmap_data(results, hx, hy)
+      assign(socket, :heatmap_data, heatmap_data)
+    else
+      assign(socket, :heatmap_data, nil)
+    end
+  end
+
+  defp build_heatmap_data(results, x_param, y_param) do
+    x_values =
+      results
+      |> Enum.map(fn r -> get_in(r, ["params", x_param]) end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    y_values =
+      results
+      |> Enum.map(fn r -> get_in(r, ["params", y_param]) end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    cells =
+      results
+      |> Enum.map(fn r ->
+        x = get_in(r, ["params", x_param])
+        y = get_in(r, ["params", y_param])
+        if x && y do
+          %{
+            x: x,
+            y: y,
+            sharpe: r["sharpe"] || 0,
+            pnl: r["total_pnl"] || 0,
+            trade_count: r["trade_count"] || 0,
+            combo_index: r["combo_index"] || 0
+          }
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    %{
+      x_param: x_param,
+      y_param: y_param,
+      x_values: x_values,
+      y_values: y_values,
+      cells: cells
+    }
+  end
+
+  defp extract_param_names(results) do
+    case results do
+      [first | _] ->
+        case first["params"] do
+          params when is_map(params) -> Map.keys(params) |> Enum.sort()
+          _ -> []
+        end
+      _ -> []
+    end
+  end
+
+  # --- General Helpers ---
 
   defp default_param do
     %{"param_name" => "sl_value", "min" => "20", "max" => "50", "step" => "5"}
@@ -237,6 +424,14 @@ defmodule QuantEdgeWeb.OptimizerLive do
     params |> Enum.map(fn {k, v} -> "#{k}=#{v}" end) |> Enum.join(", ")
   end
   defp format_params(params), do: to_string(params)
+
+  defp format_number(nil), do: "—"
+  defp format_number(n) when is_float(n), do: :erlang.float_to_binary(n, decimals: 2)
+  defp format_number(n), do: to_string(n)
+
+  defp pnl_class(nil), do: ""
+  defp pnl_class(n) when is_number(n) and n >= 0, do: "text-profit"
+  defp pnl_class(_), do: "text-loss"
 
   defp safe_list_strategies do
     try do

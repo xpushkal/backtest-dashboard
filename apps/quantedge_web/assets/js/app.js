@@ -27,6 +27,7 @@ import topbar from "../vendor/topbar"
 
 import {EquityChart} from "./hooks/equity_chart"
 import {MonthlyHeatmap, MonteCarloChart, GreeksChart, WalkForwardChart} from "./hooks/advanced_charts"
+import OptimizerHeatmap from "./optimizer_heatmap_hook"
 
 const Hooks = {
   ...colocatedHooks,
@@ -35,6 +36,7 @@ const Hooks = {
   MonteCarloChart,
   GreeksChart,
   WalkForwardChart,
+  OptimizerHeatmap,
 }
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")

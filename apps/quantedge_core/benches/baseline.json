@@ -1,0 +1,9 @@
+{
+  "4yr_single_leg_atm_ce": {"max_ms": 1000, "description": "Single-leg CE sell, 4yr BankNifty"},
+  "100_day_single_leg": {"max_ms": 50, "description": "Single-leg CE sell, 100 days"},
+  "4yr_straddle_2leg": {"max_ms": 1500, "description": "CE+PE straddle, 4yr"},
+  "4yr_iron_condor_4leg": {"max_ms": 2500, "description": "4-leg iron condor, 4yr"},
+  "metrics_1000_trades": {"max_ms": 50, "description": "MetricsEngine compute, 1000 trades"},
+  "optimizer_720_combos": {"max_ms": 180000, "description": "720-combo grid sweep, 4yr data"},
+  "portfolio_3_strategy": {"max_ms": 5000, "description": "3-strategy portfolio, 4yr"}
+}

@@ -154,9 +154,72 @@ fn run_backtest(strategy_toml: String, opts_json: String) -> Result<String, Stri
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
-fn run_optimizer(_strategy_toml: String, _param_grid_json: String) -> Result<String, String> {
-    // TODO: Phase 8 — Parameter optimizer implementation
-    Err("Optimizer not yet implemented".to_string())
+fn run_optimizer(strategy_toml: String, param_grid_json: String) -> Result<String, String> {
+    use quantedge_optimizer::{OptimizerSweep, ParamGrid};
+
+    // 1. Parse strategy config from TOML
+    let config = StrategyConfig::from_toml_str(&strategy_toml)
+        .map_err(|e| format!("Invalid TOML: {}", e))?;
+
+    // 2. Parse param grid from JSON
+    let grid = ParamGrid::from_json_str(&param_grid_json)
+        .map_err(|e| format!("Invalid param grid: {}", e))?;
+
+    // 3. Load bar data
+    let start_date = chrono::NaiveDate::from_ymd_opt(2021, 1, 1)
+        .unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(2021, 1, 1).unwrap());
+    let end_date = chrono::NaiveDate::from_ymd_opt(2024, 12, 31)
+        .unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(2024, 12, 31).unwrap());
+
+    let bar_config = BarLoadConfig {
+        symbol: config.strategy.underlying.clone(),
+        expiry_type: "weekly".to_string(),
+        start_date,
+        end_date,
+        data_dir: "Data/parquet".to_string(),
+    };
+
+    let bars_raw = BarStream::load(&bar_config)
+        .map_err(|e| format!("Data load error: {}", e))?;
+
+    let bars: Vec<SimBar> = bars_raw
+        .iter()
+        .map(|b| SimBar {
+            date: b.date,
+            time: b.time,
+            option_type: b.option_type.clone(),
+            strike_offset: b.strike_offset,
+            close: b.close,
+            spot: b.spot,
+        })
+        .collect();
+
+    // 4. Run optimizer sweep (Rayon parallel)
+    let capital = config.strategy.capital;
+    let results = OptimizerSweep::run(
+        &config, &bars, &grid, 15, capital, start_date, end_date,
+    );
+
+    // 5. Serialize results (top 100) to JSON
+    let result_jsons: Vec<serde_json::Value> = results
+        .iter()
+        .take(100)
+        .map(|r| {
+            serde_json::json!({
+                "combo_index": r.combo_index,
+                "params": r.params,
+                "sharpe": r.metrics.sharpe_ratio,
+                "total_pnl": r.metrics.total_pnl_net,
+                "max_dd_pct": r.metrics.max_drawdown_pct,
+                "trade_count": r.trade_count,
+                "win_rate": r.metrics.win_rate_pct,
+                "profit_factor": r.metrics.profit_factor,
+                "cagr": r.metrics.cagr,
+            })
+        })
+        .collect();
+
+    serde_json::to_string(&result_jsons).map_err(|e| format!("Serialize error: {}", e))
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]

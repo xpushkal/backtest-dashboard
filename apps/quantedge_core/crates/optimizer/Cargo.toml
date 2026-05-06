@@ -7,3 +7,6 @@ edition = "2021"
 quantedge-core = { path = "../core" }
 quantedge-metrics = { path = "../metrics" }
 rayon = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
