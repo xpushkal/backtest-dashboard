@@ -26,10 +26,15 @@ import {hooks as colocatedHooks} from "phoenix-colocated/quantedge_umbrella_web"
 import topbar from "../vendor/topbar"
 
 import {EquityChart} from "./hooks/equity_chart"
+import {MonthlyHeatmap, MonteCarloChart, GreeksChart, WalkForwardChart} from "./hooks/advanced_charts"
 
 const Hooks = {
   ...colocatedHooks,
-  EquityChart: EquityChart,
+  EquityChart,
+  MonthlyHeatmap,
+  MonteCarloChart,
+  GreeksChart,
+  WalkForwardChart,
 }
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")

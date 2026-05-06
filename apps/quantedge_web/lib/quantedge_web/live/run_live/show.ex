@@ -94,7 +94,7 @@ defmodule QuantEdgeWeb.RunLive.Show do
     </div>
 
     <%!-- Tabs --%>
-    <.tab_bar tabs={["Overview", "Trades", "Metrics"]} active={@active_tab} />
+    <.tab_bar tabs={["Overview", "Trades", "Metrics", "Analytics"]} active={@active_tab} />
 
     <%!-- Overview Tab --%>
     <div :if={@active_tab == "Overview"} class="card">
@@ -183,6 +183,51 @@ defmodule QuantEdgeWeb.RunLive.Show do
             <span class="text-sm">{humanize_key(key)}</span>
             <span class="text-mono text-sm">{format_metric_val(val)}</span>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <%!-- Analytics Tab (07-06) --%>
+    <div :if={@active_tab == "Analytics"}>
+      <%!-- Monthly PnL Heatmap --%>
+      <div class="card mb-8">
+        <div class="card-header">
+          <span class="card-title">Monthly PnL Heatmap</span>
+        </div>
+        <div id="monthly-heatmap" phx-hook="MonthlyHeatmap" style="min-height: 200px;">
+          <p class="text-center text-muted" style="padding: 2rem;">Loading heatmap data...</p>
+        </div>
+      </div>
+
+      <div class="grid-2 mb-8">
+        <%!-- Monte Carlo Confidence Bands --%>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Monte Carlo Simulation</span>
+          </div>
+          <div id="montecarlo-chart" phx-hook="MonteCarloChart" style="height: 320px; position: relative;">
+            <canvas></canvas>
+          </div>
+        </div>
+
+        <%!-- Greeks Attribution --%>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Greeks Attribution</span>
+          </div>
+          <div id="greeks-chart" phx-hook="GreeksChart" style="height: 320px; position: relative;">
+            <canvas></canvas>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Walk-Forward Analysis --%>
+      <div class="card mb-8">
+        <div class="card-header">
+          <span class="card-title">Walk-Forward Analysis</span>
+        </div>
+        <div id="walkforward-chart" phx-hook="WalkForwardChart" style="height: 300px; position: relative;">
+          <canvas></canvas>
         </div>
       </div>
     </div>
