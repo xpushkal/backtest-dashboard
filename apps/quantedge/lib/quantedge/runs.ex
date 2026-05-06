@@ -10,6 +10,27 @@ defmodule QuantEdge.Runs do
     Repo.all(from r in BacktestRun, order_by: [desc: r.inserted_at], preload: :strategy)
   end
 
+  def list_recent_runs(limit \\ 10) do
+    Repo.all(
+      from r in BacktestRun,
+        order_by: [desc: r.inserted_at],
+        limit: ^limit,
+        preload: :strategy
+    )
+    |> Enum.map(fn run ->
+      %{
+        id: run.id,
+        strategy_name: if(run.strategy, do: run.strategy.name, else: nil),
+        underlying: if(run.strategy, do: run.strategy.underlying, else: nil),
+        date_from: run.date_from,
+        date_to: run.date_to,
+        status: run.status,
+        result_summary: run.result_summary || %{},
+        inserted_at: run.inserted_at
+      }
+    end)
+  end
+
   def list_runs_for_strategy(strategy_id) do
     Repo.all(
       from r in BacktestRun,
