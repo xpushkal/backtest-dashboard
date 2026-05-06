@@ -25,11 +25,18 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/quantedge_umbrella_web"
 import topbar from "../vendor/topbar"
 
+import {EquityChart} from "./hooks/equity_chart"
+
+const Hooks = {
+  ...colocatedHooks,
+  EquityChart: EquityChart,
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: Hooks,
 })
 
 // Show progress bar on live navigation and form submits
