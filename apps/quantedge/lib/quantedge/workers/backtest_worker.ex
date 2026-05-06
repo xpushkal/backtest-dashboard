@@ -59,6 +59,16 @@ defmodule QuantEdge.Workers.BacktestWorker do
 
   defp broadcast(run_id, message) do
     Phoenix.PubSub.broadcast(QuantEdge.PubSub, "run:#{run_id}", message)
+    # Also broadcast to the global listing channel
+    case message do
+      {:status, :running} ->
+        Phoenix.PubSub.broadcast(QuantEdge.PubSub, "runs:updates", {:run_started, run_id})
+      {:completed, summary} ->
+        Phoenix.PubSub.broadcast(QuantEdge.PubSub, "runs:updates", {:run_completed, run_id, summary})
+      {:error, reason} ->
+        Phoenix.PubSub.broadcast(QuantEdge.PubSub, "runs:updates", {:run_failed, run_id, reason})
+      _ -> :ok
+    end
   end
 
   defp extract_summary(metrics) when is_map(metrics) do

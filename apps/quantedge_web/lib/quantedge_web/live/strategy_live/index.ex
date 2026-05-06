@@ -116,8 +116,22 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
 
   def handle_event("update_leg", params, socket) do
     idx = String.to_integer(params["index"])
+    suffix = "_#{idx}"
+
+    # Extract leg-specific params, strip "leg_" prefix and "_N" suffix
+    leg_params =
+      params
+      |> Map.drop(["index", "_target"])
+      |> Enum.reduce(%{}, fn {key, val}, acc ->
+        clean_key =
+          key
+          |> String.replace_prefix("leg_", "")
+          |> String.replace_suffix(suffix, "")
+        Map.put(acc, clean_key, val)
+      end)
+
     legs = List.update_at(socket.assigns.legs, idx, fn leg ->
-      Map.merge(leg, Map.drop(params, ["index", "_target"]))
+      Map.merge(leg, leg_params)
     end)
     {:noreply, socket |> assign(:legs, legs) |> update_toml_preview()}
   end
@@ -220,7 +234,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
           </div>
         </div>
 
-        <div class="grid-4 mb-6">
+        <div class="grid-4 mb-4">
           <div class="input-group">
             <label class="input-label">Capital (₹)</label>
             <input type="number" name="capital" value={@form.params["capital"] || "100000"} class="input" />
@@ -234,8 +248,32 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
             <input type="text" name="exit_time" value={@form.params["exit_time"] || "15:15"} class="input" placeholder="HH:MM" />
           </div>
           <div class="input-group">
-            <label class="input-label">Lot Size</label>
-            <input type="number" name="lot_size" value={@form.params["lot_size"] || "15"} class="input" />
+            <label class="input-label">Brokerage/Lot (₹)</label>
+            <input type="number" name="brokerage" value={@form.params["brokerage"] || "40"} class="input" />
+          </div>
+        </div>
+        <div class="grid-4 mb-6">
+          <div class="input-group">
+            <label class="input-label">Slippage Model</label>
+            <select name="slippage_model" class="input">
+              <option value="fixed_pts" selected={@form.params["slippage_model"] != "percent"}>Fixed Pts</option>
+              <option value="percent" selected={@form.params["slippage_model"] == "percent"}>Percent</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label class="input-label">Slippage Value</label>
+            <input type="number" step="0.1" name="slippage_value" value={@form.params["slippage_value"] || "1.0"} class="input" />
+          </div>
+          <div class="input-group">
+            <label class="input-label">STT on Sell</label>
+            <select name="stt_on_sell" class="input">
+              <option value="true" selected={@form.params["stt_on_sell"] != "false"}>Yes</option>
+              <option value="false" selected={@form.params["stt_on_sell"] == "false"}>No</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label class="input-label">Max Concurrent</label>
+            <input type="number" name="max_concurrent" value={@form.params["max_concurrent"] || "1"} class="input" />
           </div>
         </div>
 
@@ -276,7 +314,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
             </div>
           </div>
 
-          <div class="grid-4">
+          <div class="grid-4 mb-3">
             <div class="input-group">
               <label class="input-label">Expiry</label>
               <select name={"leg_expiry_#{idx}"} class="input" phx-change="update_leg" phx-value-index={idx}>
@@ -301,6 +339,77 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
             <div class="input-group">
               <label class="input-label">Target Value</label>
               <input type="number" step="0.1" name={"leg_target_value_#{idx}"} value={leg["target_value"] || ""} class="input" placeholder="Optional" phx-change="update_leg" phx-value-index={idx} />
+            </div>
+          </div>
+
+          <%!-- Trailing SL & Re-entry --%>
+          <div class="grid-4">
+            <div class="input-group">
+              <label class="input-label">Trail SL</label>
+              <select name={"leg_trail_sl_enabled_#{idx}"} class="input" phx-change="update_leg" phx-value-index={idx}>
+                <option value="false" selected={leg["trail_sl_enabled"] != "true"}>Off</option>
+                <option value="true" selected={leg["trail_sl_enabled"] == "true"}>On</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Trail Activate At</label>
+              <input type="number" step="0.1" name={"leg_trail_activate_#{idx}"} value={leg["trail_activate"] || "0"} class="input" phx-change="update_leg" phx-value-index={idx} />
+            </div>
+            <div class="input-group">
+              <label class="input-label">Re-entry on SL</label>
+              <select name={"leg_reentry_on_sl_#{idx}"} class="input" phx-change="update_leg" phx-value-index={idx}>
+                <option value="false" selected={leg["reentry_on_sl"] != "true"}>Off</option>
+                <option value="true" selected={leg["reentry_on_sl"] == "true"}>On</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Max Re-entries</label>
+              <input type="number" name={"leg_reentry_max_#{idx}"} value={leg["reentry_max"] || "2"} class="input" phx-change="update_leg" phx-value-index={idx} />
+            </div>
+          </div>
+        </div>
+
+        <%!-- Overall SL/Target Section --%>
+        <div class="card mb-6" style="background: var(--bg-tertiary);">
+          <h4 class="mb-4">Overall Strategy SL / Target</h4>
+          <div class="grid-3">
+            <div class="input-group">
+              <label class="input-label">Overall SL</label>
+              <select name="overall_sl_enabled" class="input">
+                <option value="false" selected={@form.params["overall_sl_enabled"] != "true"}>Disabled</option>
+                <option value="true" selected={@form.params["overall_sl_enabled"] == "true"}>Enabled</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Overall SL Type</label>
+              <select name="overall_sl_type" class="input">
+                <option value="percent_of_premium" selected={@form.params["overall_sl_type"] != "points"}>% Premium</option>
+                <option value="points" selected={@form.params["overall_sl_type"] == "points"}>Points</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Overall SL Value</label>
+              <input type="number" step="0.1" name="overall_sl_value" value={@form.params["overall_sl_value"] || "0"} class="input" />
+            </div>
+          </div>
+          <div class="grid-3 mt-3">
+            <div class="input-group">
+              <label class="input-label">Overall Target</label>
+              <select name="overall_target_enabled" class="input">
+                <option value="false" selected={@form.params["overall_target_enabled"] != "true"}>Disabled</option>
+                <option value="true" selected={@form.params["overall_target_enabled"] == "true"}>Enabled</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Overall Target Type</label>
+              <select name="overall_target_type" class="input">
+                <option value="percent_of_premium" selected={@form.params["overall_target_type"] != "points"}>% Premium</option>
+                <option value="points" selected={@form.params["overall_target_type"] == "points"}>Points</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Overall Target Value</label>
+              <input type="number" step="0.1" name="overall_target_value" value={@form.params["overall_target_value"] || "0"} class="input" />
             </div>
           </div>
         </div>
@@ -368,18 +477,22 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
     [strategy]
     name = "#{form["name"] || "Unnamed"}"
     underlying = "#{form["underlying"] || "BANKNIFTY"}"
-    capital = #{form["capital"] || "100000"}
+    capital = #{form["capital"] || "100000"}.0
     entry_time = "#{form["entry_time"] || "09:20"}"
     exit_time = "#{form["exit_time"] || "15:15"}"
-    lot_size = #{form["lot_size"] || "15"}
+    brokerage_per_lot = #{form["brokerage"] || "40"}.0
+    slippage_model = "#{form["slippage_model"] || "fixed_pts"}"
+    slippage_value = #{form["slippage_value"] || "1.0"}
+    stt_on_sell = #{form["stt_on_sell"] || "true"}
     """
 
     legs_section =
       legs
       |> Enum.map(fn leg ->
-        target_line = if leg["target_value"] && leg["target_value"] != "",
-          do: "\ntarget_type = \"percent_of_premium\"\ntarget_value = #{leg["target_value"]}",
-          else: ""
+        sl_enabled = leg["sl_type"] != "none" && leg["sl_type"] != ""
+        tp_enabled = leg["target_value"] && leg["target_value"] != ""
+        trail_enabled = leg["trail_sl_enabled"] == "true"
+        reentry_on = leg["reentry_on_sl"] == "true"
 
         """
 
@@ -390,13 +503,36 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
         expiry = "#{leg["expiry"] || "weekly"}"
         strike_mode = "atm_offset"
         strike_offset = #{leg["strike_offset"] || "0"}
-        sl_type = "#{leg["sl_type"] || "percent_of_premium"}"
-        sl_value = #{leg["sl_value"] || "30.0"}#{target_line}
+        stop_loss_enabled = #{sl_enabled}
+        stop_loss_type = "#{leg["sl_type"] || "percent_of_premium"}"
+        stop_loss_value = #{leg["sl_value"] || "30.0"}
+        target_profit_enabled = #{tp_enabled}
+        target_profit_type = "#{leg["target_type"] || "percent_of_premium"}"
+        target_profit_value = #{if tp_enabled, do: leg["target_value"], else: "0.0"}
+        trail_sl_enabled = #{trail_enabled}
+        trail_sl_activate_at = #{leg["trail_activate"] || "0.0"}
+        trail_sl_lock_in = #{leg["trail_lock"] || "0.0"}
+        reentry_on_sl = #{reentry_on}
+        reentry_max_attempts = #{leg["reentry_max"] || "2"}
         """
       end)
       |> Enum.join("")
 
-    String.trim(strategy_section <> legs_section)
+    overall_sl = form["overall_sl_enabled"] == "true"
+    overall_target = form["overall_target_enabled"] == "true"
+
+    overall_section = """
+
+    [overall]
+    overall_sl_enabled = #{overall_sl}
+    overall_sl_type = "#{form["overall_sl_type"] || "percent_of_premium"}"
+    overall_sl_value = #{form["overall_sl_value"] || "0.0"}
+    overall_target_enabled = #{overall_target}
+    overall_target_type = "#{form["overall_target_type"] || "percent_of_premium"}"
+    overall_target_value = #{form["overall_target_value"] || "0.0"}
+    """
+
+    String.trim(strategy_section <> legs_section <> overall_section)
   end
 
   defp safe_list_strategies do

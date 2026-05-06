@@ -30,9 +30,7 @@ config :quantedge_web, QuantEdgeWeb.Endpoint,
     ]
   ]
 
-# Disable Oban in dev to avoid needing Postgres running
-config :quantedge, Oban,
-  testing: :manual
+# Oban runs normally in dev (workers process jobs)
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :console, format: "[$level] $message\n"
