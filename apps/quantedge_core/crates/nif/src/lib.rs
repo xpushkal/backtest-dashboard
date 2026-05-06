@@ -160,9 +160,155 @@ fn run_optimizer(_strategy_toml: String, _param_grid_json: String) -> Result<Str
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
-fn run_portfolio(_strategies_json: String, _opts_json: String) -> Result<String, String> {
-    // TODO: Phase 8 — Portfolio engine implementation
-    Err("Portfolio not yet implemented".to_string())
+fn run_portfolio(portfolio_json: String, _opts_json: String) -> Result<String, String> {
+    use quantedge_portfolio::{
+        CorrelationMatrix, MarginModel, PortfolioConfig, PortfolioEngine,
+        PortfolioMarginTracker, PortfolioMetrics,
+    };
+    use std::collections::HashMap;
+
+    // 1. Parse portfolio config from JSON
+    let config = PortfolioConfig::from_json_str(&portfolio_json)
+        .map_err(|e| format!("Portfolio config error: {}", e))?;
+
+    // 2. Load bar data per unique underlying (deduplicate loads)
+    let start_date = chrono::NaiveDate::parse_from_str(&config.date_from, "%Y-%m-%d")
+        .map_err(|e| format!("Invalid date_from: {}", e))?;
+    let end_date = chrono::NaiveDate::parse_from_str(&config.date_to, "%Y-%m-%d")
+        .map_err(|e| format!("Invalid date_to: {}", e))?;
+
+    let mut bars_map: HashMap<String, Vec<SimBar>> = HashMap::new();
+    for alloc in &config.strategies {
+        if bars_map.contains_key(&alloc.underlying) {
+            continue;
+        }
+
+        let bar_config = BarLoadConfig {
+            symbol: alloc.underlying.clone(),
+            expiry_type: "weekly".to_string(),
+            start_date,
+            end_date,
+            data_dir: config.data_dir.clone(),
+        };
+
+        let bars_raw = BarStream::load(&bar_config)
+            .map_err(|e| format!("Data load error for {}: {}", alloc.underlying, e))?;
+
+        let bars: Vec<SimBar> = bars_raw
+            .iter()
+            .map(|b| SimBar {
+                date: b.date,
+                time: b.time,
+                option_type: b.option_type.clone(),
+                strike_offset: b.strike_offset,
+                close: b.close,
+                spot: b.spot,
+            })
+            .collect();
+
+        bars_map.insert(alloc.underlying.clone(), bars);
+    }
+
+    // 3. Run portfolio engine
+    let portfolio_result = PortfolioEngine::run(&config, &bars_map)
+        .map_err(|e| format!("Portfolio engine error: {}", e))?;
+
+    // 4. Compute correlation matrix
+    let daily_pnls: Vec<Vec<f64>> = portfolio_result
+        .strategy_results
+        .iter()
+        .map(|sr| sr.daily_pnls.clone())
+        .collect();
+    let strategy_names: Vec<String> = portfolio_result
+        .strategy_results
+        .iter()
+        .map(|sr| sr.name.clone())
+        .collect();
+    let correlation = CorrelationMatrix::compute(&daily_pnls, &strategy_names);
+
+    // 5. Portfolio margin tracking (simplified — compute peak margin from results)
+    let margin_model = MarginModel::default_model();
+    let margin_tracker = PortfolioMarginTracker::new(config.total_capital, margin_model);
+
+    // 6. Compute portfolio metrics
+    let portfolio_metrics = PortfolioMetrics::compute(
+        &portfolio_result,
+        &correlation,
+        &margin_tracker,
+        config.total_capital,
+    );
+
+    // 7. Build response JSON
+    let per_strategy: Vec<serde_json::Value> = portfolio_result
+        .strategy_results
+        .iter()
+        .map(|sr| {
+            let trades: Vec<serde_json::Value> = sr
+                .run_result
+                .trades
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "entry_date": t.entry_date.to_string(),
+                        "exit_date": t.exit_date.to_string(),
+                        "entry_time": t.entry_time.to_string(),
+                        "exit_time": t.exit_time.to_string(),
+                        "option_type": format!("{:?}", t.option_type),
+                        "position_side": format!("{:?}", t.position_side),
+                        "entry_price": t.entry_price,
+                        "exit_price": t.exit_price,
+                        "pnl_gross": t.pnl_gross,
+                        "pnl_net": t.pnl_net,
+                        "exit_reason": format!("{:?}", t.exit_reason),
+                        "bars_held": t.bars_held,
+                    })
+                })
+                .collect();
+
+            let equity: Vec<serde_json::Value> = sr
+                .equity_curve
+                .iter()
+                .map(|ep| {
+                    serde_json::json!({
+                        "date": ep.date.to_string(),
+                        "equity": ep.equity,
+                    })
+                })
+                .collect();
+
+            serde_json::json!({
+                "name": sr.name,
+                "underlying": sr.underlying,
+                "allocation_pct": sr.allocation_pct,
+                "allocated_capital": sr.allocated_capital,
+                "trades": trades,
+                "equity_curve": equity,
+                "metrics": serde_json::to_value(&sr.metrics).unwrap_or_default(),
+                "total_trades": sr.run_result.trades.len(),
+            })
+        })
+        .collect();
+
+    let combined_equity: Vec<serde_json::Value> = portfolio_result
+        .combined_equity
+        .iter()
+        .map(|ep| {
+            serde_json::json!({
+                "date": ep.date.to_string(),
+                "equity": ep.equity,
+            })
+        })
+        .collect();
+
+    let response = serde_json::json!({
+        "strategies": per_strategy,
+        "combined_equity": combined_equity,
+        "portfolio_metrics": serde_json::to_value(&portfolio_metrics).unwrap_or_default(),
+        "correlation_matrix": correlation.to_json(),
+        "total_trades": portfolio_result.total_trades,
+    });
+
+    serde_json::to_string(&response).map_err(|e| format!("Serialize error: {}", e))
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
