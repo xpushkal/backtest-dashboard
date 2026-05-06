@@ -111,4 +111,35 @@ defmodule QuantEdge.Runs do
     |> QuantEdge.Workers.OptimizerWorker.new()
     |> Oban.insert()
   end
+
+  def enqueue_portfolio(portfolio_run_id, portfolio_json) do
+    %{portfolio_run_id: portfolio_run_id, portfolio_json: portfolio_json}
+    |> QuantEdge.Workers.PortfolioWorker.new()
+    |> Oban.insert()
+  end
+
+  # ─── Run Lifecycle ─────────────────────────────────────────
+
+  def complete_run(run_id, result_summary) do
+    store_result(run_id, result_summary)
+  end
+
+  def fail_run(run_id, reason) do
+    run = Repo.get!(BacktestRun, run_id)
+
+    run
+    |> BacktestRun.changeset(%{
+      status: "failed",
+      completed_at: DateTime.utc_now(),
+      result_summary: %{"error" => reason}
+    })
+    |> Repo.update()
+  end
+
+  # ─── Capital helpers ───────────────────────────────────────
+
+  def list_recent_runs_with_capital(limit \\ 10) do
+    list_recent_runs(limit)
+    |> Enum.map(fn run -> Map.put(run, :capital, run[:capital]) end)
+  end
 end
