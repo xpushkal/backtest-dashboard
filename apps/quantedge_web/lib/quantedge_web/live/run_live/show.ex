@@ -57,27 +57,31 @@ defmodule QuantEdgeWeb.RunLive.Show do
       <a href="/runs" class="btn btn-secondary">← Back to Runs</a>
     </div>
 
-    <%!-- Hero Stats --%>
-    <div class="grid-4 mb-8">
+    <%!-- Hero Stats Row 1: Core Returns --%>
+    <div class="grid-4 mb-4">
       <.stat_card
-        label="Total PnL"
-        value={fmt_currency(@summary["total_pnl"])}
-        trend={pnl_trend(@summary["total_pnl"])}
-        class={pnl_border(@summary["total_pnl"])}
+        label="Total PnL (Net)"
+        value={fmt_currency(@summary["total_pnl_net"])}
+        trend={pnl_trend(@summary["total_pnl_net"])}
+        class={pnl_border(@summary["total_pnl_net"])}
       />
       <.stat_card label="CAGR" value={fmt_pct(@summary["cagr"])} />
+      <.stat_card label="ROI" value={fmt_pct(@summary["roi_pct"])} />
       <.stat_card label="Win Rate" value={fmt_pct(@summary["win_rate_pct"])} />
-      <.stat_card
-        label="Max Drawdown"
-        value={fmt_pct(@summary["max_drawdown_pct"])}
-        class="stat-card-loss"
-      />
     </div>
-    <div class="grid-4 mb-8">
+    <%!-- Hero Stats Row 2: Risk --%>
+    <div class="grid-4 mb-4">
+      <.stat_card label="Max Drawdown" value={fmt_pct(@summary["max_drawdown_pct"])} class="stat-card-loss" />
       <.stat_card label="Sharpe Ratio" value={fmt_num(@summary["sharpe_ratio"])} />
+      <.stat_card label="Sortino Ratio" value={fmt_num(@summary["sortino_ratio"])} />
+      <.stat_card label="Calmar Ratio" value={fmt_num(@summary["calmar_ratio"])} />
+    </div>
+    <%!-- Hero Stats Row 3: Trade Analytics --%>
+    <div class="grid-4 mb-8">
       <.stat_card label="Profit Factor" value={fmt_num(@summary["profit_factor"])} />
       <.stat_card label="Total Trades" value={fmt_int(@summary["total_trades"])} />
-      <.stat_card label="Premium Capture" value={fmt_pct(@summary["premium_capture_pct"])} />
+      <.stat_card label="Expectancy" value={fmt_currency(@summary["expectancy"])} />
+      <.stat_card label="Avg Win/Loss" value={fmt_num(@summary["win_loss_ratio"])} />
     </div>
 
     <%!-- Equity Curve Chart --%>
@@ -352,23 +356,30 @@ defmodule QuantEdgeWeb.RunLive.Show do
     |> Enum.sort_by(fn {cat, _} -> category_order(cat) end)
   end
 
+  @return_keys ~w(total_pnl_gross total_pnl_net cagr roi_pct expectancy profit_factor
+    win_rate_pct avg_win avg_loss win_loss_ratio largest_win largest_loss gross_profit gross_loss)
+  @risk_keys ~w(max_drawdown_inr max_drawdown_pct avg_drawdown sharpe_ratio sortino_ratio
+    calmar_ratio omega_ratio var_95 var_99 cvar ulcer_index daily_volatility ann_volatility
+    skewness kurtosis recovery_factor drawdown_duration_days)
+  @trade_keys ~w(total_trades avg_hold_bars max_hold_bars max_consec_wins max_consec_losses
+    sl_hit_rate_pct target_hit_rate_pct time_exit_rate_pct reentry_count reentry_win_rate)
+  @cost_keys ~w(total_brokerage total_slippage total_stt_cost net_cost_ratio)
+
   defp metric_category(key) do
     cond do
-      String.contains?(key, ["pnl", "return", "cagr", "profit"]) -> "Returns"
-      String.contains?(key, ["drawdown", "sharpe", "sortino", "var", "cvar"]) -> "Risk"
-      String.contains?(key, ["trade", "win", "loss", "avg", "max_consecutive"]) -> "Trade Stats"
-      String.contains?(key, ["premium", "theta", "delta", "gamma", "vega", "greeks"]) -> "Options"
-      String.contains?(key, ["monthly", "weekly", "daily", "annual"]) -> "Time-Based"
-      true -> "Other"
+      key in @return_keys -> "📈 Return Metrics"
+      key in @risk_keys -> "🛡️ Risk Metrics"
+      key in @trade_keys -> "📊 Trade Analytics"
+      key in @cost_keys -> "💰 Cost Breakdown"
+      true -> "📋 Other"
     end
   end
 
-  defp category_order("Returns"), do: 0
-  defp category_order("Risk"), do: 1
-  defp category_order("Trade Stats"), do: 2
-  defp category_order("Options"), do: 3
-  defp category_order("Time-Based"), do: 4
-  defp category_order(_), do: 5
+  defp category_order("📈 Return Metrics"), do: 0
+  defp category_order("🛡️ Risk Metrics"), do: 1
+  defp category_order("📊 Trade Analytics"), do: 2
+  defp category_order("💰 Cost Breakdown"), do: 3
+  defp category_order(_), do: 4
 
   defp humanize_key(key) do
     key

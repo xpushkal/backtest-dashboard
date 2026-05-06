@@ -72,10 +72,8 @@ defmodule QuantEdge.Workers.BacktestWorker do
   end
 
   defp extract_summary(metrics) when is_map(metrics) do
-    Map.take(metrics, [
-      "total_pnl_net", "cagr", "win_rate_pct", "max_drawdown_pct",
-      "sharpe_ratio", "profit_factor", "total_trades", "premium_capture_pct"
-    ])
+    # Store all metrics from the Rust MetricsResult (44 fields)
+    metrics
   end
 
   defp get_lot_size("BANKNIFTY"), do: 15

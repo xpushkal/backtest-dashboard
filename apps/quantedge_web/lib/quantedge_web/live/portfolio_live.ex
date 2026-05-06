@@ -74,11 +74,42 @@ defmodule QuantEdgeWeb.PortfolioLive do
     if MapSet.size(socket.assigns.selected) < 2 do
       {:noreply, put_flash(socket, :error, "Select at least 2 strategies")}
     else
-      {:noreply,
-       socket
-       |> assign(:running, true)
-       |> assign(:progress, 0.0)
-       |> put_flash(:info, "Portfolio backtest started!")}
+      # Build portfolio JSON
+      strategies = selected_strategies(socket.assigns.strategies, socket.assigns.selected)
+      portfolio = %{
+        strategies: Enum.map(strategies, fn s ->
+          %{
+            id: s.id,
+            name: s.name,
+            config_toml: s.config_toml,
+            allocation_pct: Map.get(socket.assigns.allocations, s.id, 0)
+          }
+        end),
+        total_capital: socket.assigns.total_capital,
+        date_from: socket.assigns.date_from,
+        date_to: socket.assigns.date_to
+      }
+
+      portfolio_json = Jason.encode!(portfolio)
+
+      # Create a portfolio run record and enqueue
+      case QuantEdge.Runs.create_optimizer_run(%{
+        strategy_id: List.first(strategies).id,
+        status: "pending",
+        total_combos: length(strategies),
+        completed_combos: 0
+      }) do
+        {:ok, run} ->
+          QuantEdge.Runs.enqueue_portfolio(run.id, portfolio_json)
+          {:noreply,
+           socket
+           |> assign(:running, true)
+           |> assign(:progress, 0.0)
+           |> put_flash(:info, "Portfolio backtest queued!")}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Failed to create portfolio run")}
+      end
     end
   end
 

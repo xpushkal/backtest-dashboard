@@ -189,16 +189,22 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
 
     <%!-- Strategy Cards Grid --%>
     <div :if={@strategies != [] and !@show_form} class="grid-3 mb-8">
-      <div :for={strategy <- @strategies} class="card">
-        <div class="flex-between mb-4">
-          <h3>{strategy.name}</h3>
-          <.underlying_badge underlying={strategy.underlying} />
-        </div>
-        <p class="text-sm text-muted mb-4">
-          {count_legs(strategy)} leg(s) · Updated {format_date(strategy.updated_at)}
-        </p>
+      <div :for={strategy <- @strategies} class="card" style="cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 25px rgba(0,230,230,0.08)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
+        <a href={"/strategies/#{strategy.id}/edit"} style="text-decoration: none; color: inherit; display: block;">
+          <div class="flex-between mb-3">
+            <h3>{strategy.name}</h3>
+            <.underlying_badge underlying={strategy.underlying} />
+          </div>
+          <p class="text-sm text-muted mb-2">
+            {count_legs(strategy)} leg(s) · Options · Updated {format_date(strategy.updated_at)}
+          </p>
+          <div class="text-sm text-muted mb-4" style="color: var(--accent-cyan); opacity: 0.7;">
+            {strategy_summary(strategy)}
+          </div>
+        </a>
         <div class="flex-gap-2">
           <a href={"/strategies/#{strategy.id}/edit"} class="btn btn-sm btn-secondary">Edit</a>
+          <a href={"/runs"} class="btn btn-sm btn-primary" style="font-size: 0.75rem;">▶ Run</a>
           <button class="btn btn-sm btn-danger" phx-click="delete_strategy" phx-value-id={strategy.id}>Delete</button>
         </div>
       </div>
@@ -569,4 +575,29 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
   defp format_date(%NaiveDateTime{} = dt), do: Calendar.strftime(dt, "%d %b %Y")
   defp format_date(%DateTime{} = dt), do: Calendar.strftime(dt, "%d %b %Y")
   defp format_date(date), do: to_string(date)
+
+  defp strategy_summary(strategy) do
+    case strategy.config_toml do
+      nil -> "No legs configured"
+      toml ->
+        toml
+        |> String.split("[[legs]]")
+        |> Enum.drop(1)
+        |> Enum.map(fn leg_str ->
+          pos = if String.contains?(leg_str, "\"sell\""), do: "Sell", else: "Buy"
+          opt = if String.contains?(leg_str, "\"PE\""), do: "PE", else: "CE"
+          offset = case Regex.run(~r/strike_offset\s*=\s*(-?\d+)/, leg_str) do
+            [_, "0"] -> "ATM"
+            [_, n] -> "ATM#{if String.starts_with?(n, "-"), do: n, else: "+#{n}"}"
+            _ -> "ATM"
+          end
+          "#{pos} #{opt} #{offset}"
+        end)
+        |> Enum.join(" + ")
+        |> case do
+          "" -> "No legs configured"
+          summary -> summary
+        end
+    end
+  end
 end
