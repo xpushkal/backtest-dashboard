@@ -194,10 +194,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 08-01: Portfolio config (TOML) and PortfolioEngine orchestrator
-- [ ] 08-02: Simplified SPAN MarginModel with margin check at entry
-- [ ] 08-03: Combined equity curve, portfolio metrics, CorrelationMatrix
-- [ ] 08-04: NIF wrapper (run_portfolio), Oban worker, integration tests
+- [x] 08-01: Portfolio config (TOML) and PortfolioEngine orchestrator
+- [x] 08-02: Simplified SPAN MarginModel with margin check at entry
+- [x] 08-03: Combined equity curve, portfolio metrics, CorrelationMatrix
+- [x] 08-04: NIF wrapper (run_portfolio), Oban worker, integration tests
 
 ### Phase 9: Optimizer + Hardening
 **Goal**: Parameter sweep with Rayon parallelism, heatmap visualization, performance profiling, comprehensive edge case testing.
