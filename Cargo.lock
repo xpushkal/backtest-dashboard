@@ -2508,12 +2508,17 @@ dependencies = [
 name = "quantedge-nif"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "quantedge-core",
+ "quantedge-data",
+ "quantedge-greeks",
  "quantedge-metrics",
  "quantedge-optimizer",
  "quantedge-portfolio",
  "rustler",
+ "serde",
  "serde_json",
+ "toml",
 ]
 
 [[package]]
