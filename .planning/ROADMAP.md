@@ -213,11 +213,11 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 09-01: ParamGrid TOML parser and OptimizerSweep with Rayon parallelism
-- [ ] 09-02: Optimizer result storage (DuckDB) and NIF wrapper
-- [ ] 09-03: Heatmap LiveView component (2D Sharpe grid, click-through)
-- [ ] 09-04: Edge case test suite (9 edge cases from PRD)
-- [ ] 09-05: Performance profiling, benchmark suite, regression testing
+- [x] 09-01: ParamGrid TOML parser and OptimizerSweep with Rayon parallelism
+- [x] 09-02: Optimizer result storage (DuckDB) and NIF wrapper
+- [x] 09-03: Heatmap LiveView component (2D Sharpe grid, click-through)
+- [x] 09-04: Edge case test suite (9 edge cases from PRD)
+- [x] 09-05: Performance profiling, benchmark suite, regression testing
 
 ## Progress
 

@@ -2525,9 +2525,12 @@ dependencies = [
 name = "quantedge-optimizer"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "quantedge-core",
  "quantedge-metrics",
  "rayon",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
