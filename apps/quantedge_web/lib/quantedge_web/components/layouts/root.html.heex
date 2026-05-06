@@ -4,13 +4,55 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <.live_title default="QuantEdge" suffix=" · Phoenix Framework" phx-no-format>{assigns[:page_title]}</.live_title>
+    <meta name="description" content="QuantEdge — Ultra-fast FNO options backtesting platform for Indian markets" />
+    <.live_title default="QuantEdge" suffix=" · QuantEdge" phx-no-format>{assigns[:page_title]}</.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
-    <link phx-track-static rel="stylesheet" href={~p"/assets/default.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
   </head>
   <body>
-    {@inner_content}
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+          <div class="brand-icon">Q</div>
+          <span class="brand-name">QuantEdge</span>
+        </div>
+
+        <nav class="sidebar-nav">
+          <a href="/" class={"nav-item #{if assigns[:active_nav] == :dashboard, do: "active"}"}>
+            <span class="nav-icon">📊</span>
+            Dashboard
+          </a>
+          <a href="/strategies" class={"nav-item #{if assigns[:active_nav] == :strategies, do: "active"}"}>
+            <span class="nav-icon">⚡</span>
+            Strategies
+          </a>
+          <a href="/runs" class={"nav-item #{if assigns[:active_nav] == :runs, do: "active"}"}>
+            <span class="nav-icon">🚀</span>
+            Runs
+          </a>
+          <a href="/optimizer" class={"nav-item #{if assigns[:active_nav] == :optimizer, do: "active"}"}>
+            <span class="nav-icon">🔧</span>
+            Optimizer
+          </a>
+          <a href="/portfolio" class={"nav-item #{if assigns[:active_nav] == :portfolio, do: "active"}"}>
+            <span class="nav-icon">📈</span>
+            Portfolio
+          </a>
+          <a href="/data" class={"nav-item #{if assigns[:active_nav] == :data, do: "active"}"}>
+            <span class="nav-icon">💾</span>
+            Data Explorer
+          </a>
+        </nav>
+
+        <div class="sidebar-footer">
+          QuantEdge v0.1.0 · Rust + Phoenix
+        </div>
+      </aside>
+
+      <main class="main-content">
+        {@inner_content}
+      </main>
+    </div>
   </body>
 </html>

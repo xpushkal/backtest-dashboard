@@ -171,14 +171,14 @@ Plans:
 **Plans**: 8 plans
 
 Plans:
-- [ ] 07-01: Phoenix layout, navigation, design system (CSS, components)
-- [ ] 07-02: Dashboard landing page with recent runs
-- [ ] 07-03: Strategy builder LiveView (leg editor, TOML generation, import/export)
-- [ ] 07-04: Run configuration and execution with real-time progress
-- [ ] 07-05: Results viewer — equity curve, hero stats, metrics tables
-- [ ] 07-06: Results viewer — monthly heatmap, Greeks attribution, Monte Carlo, walk-forward
-- [ ] 07-07: Data explorer LiveView
-- [ ] 07-08: Optimizer dashboard and portfolio builder LiveViews
+- [x] 07-01: Phoenix layout, navigation, design system (CSS, components)
+- [x] 07-02: Dashboard landing page with recent runs
+- [x] 07-03: Strategy builder LiveView (leg editor, TOML generation, import/export)
+- [x] 07-04: Run configuration and execution with real-time progress
+- [x] 07-05: Results viewer — equity curve, hero stats, metrics tables
+- [x] 07-06: Results viewer — monthly heatmap, Greeks attribution, Monte Carlo, walk-forward
+- [x] 07-07: Data explorer LiveView
+- [x] 07-08: Optimizer dashboard and portfolio builder LiveViews
 
 ### Phase 8: Portfolio Engine
 **Goal**: Multiple strategies running simultaneously with shared capital, margin awareness, correlation analysis, portfolio-level metrics.
