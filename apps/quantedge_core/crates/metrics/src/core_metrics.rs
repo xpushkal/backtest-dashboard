@@ -116,7 +116,7 @@ impl MetricsEngine {
         r.total_trades = trades.len() as u32;
         r.total_pnl_gross = trades.iter().map(|t| t.pnl_gross).sum();
         r.total_pnl_net = trades.iter().map(|t| t.pnl_net).sum();
-        r.total_brokerage = trades.iter().map(|t| t.brokerage + t.stt + t.slippage_cost).sum();
+        r.total_brokerage = trades.iter().map(|t| t.brokerage).sum();
         r.roi_pct = (r.total_pnl_net / capital) * 100.0;
         r.expectancy = r.total_pnl_net / n;
 

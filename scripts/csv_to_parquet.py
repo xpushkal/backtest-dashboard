@@ -20,8 +20,8 @@ COLUMNS = [
     "low", "close", "volume", "strike", "oi", "spot", "iv"
 ]
 
-FLOAT_COLS = {"open", "high", "low", "close", "volume", "strike", "oi", "spot", "iv"}
-INT_COLS = {"strike_offset"}
+FLOAT_COLS = {"open", "high", "low", "close", "strike", "oi", "spot", "iv"}
+INT_COLS = {"strike_offset", "volume"}
 
 FILES = {
     "NIFTY": "Data/NIFTY 4 Years.csv",
@@ -84,6 +84,7 @@ def convert_symbol(symbol, csv_path, base_dir):
 
         # Build Arrow table
         arrays = {
+            "timestamp": pa.array([r["timestamp"] for r in rows], type=pa.utf8()),
             "date": pa.array([datetime.strptime(r["date"], "%Y-%m-%d").date() for r in rows], type=pa.date32()),
             "time": pa.array([r["time"] for r in rows], type=pa.utf8()),
             "weekday": pa.array([r["weekday"] for r in rows], type=pa.utf8()),
@@ -95,7 +96,7 @@ def convert_symbol(symbol, csv_path, base_dir):
             "high": pa.array([r["high"] for r in rows], type=pa.float64()),
             "low": pa.array([r["low"] for r in rows], type=pa.float64()),
             "close": pa.array([r["close"] for r in rows], type=pa.float64()),
-            "volume": pa.array([r["volume"] for r in rows], type=pa.float64()),
+            "volume": pa.array([r["volume"] for r in rows], type=pa.int64()),
             "strike": pa.array([r["strike"] for r in rows], type=pa.float64()),
             "oi": pa.array([r["oi"] for r in rows], type=pa.float64()),
             "spot": pa.array([r["spot"] for r in rows], type=pa.float64()),

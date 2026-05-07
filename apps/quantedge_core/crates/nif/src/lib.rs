@@ -153,8 +153,26 @@ fn run_backtest(strategy_toml: String, opts_json: String) -> Result<String, Stri
     serde_json::to_string(&response).map_err(|e| format!("Serialize error: {}", e))
 }
 
+#[derive(Deserialize, Default)]
+struct OptimizerOpts {
+    #[serde(default)]
+    date_from: Option<String>,
+    #[serde(default)]
+    date_to: Option<String>,
+    #[serde(default)]
+    capital: Option<f64>,
+    #[serde(default)]
+    lot_size: Option<u32>,
+    #[serde(default)]
+    data_dir: Option<String>,
+}
+
 #[rustler::nif(schedule = "DirtyCpu")]
-fn run_optimizer(strategy_toml: String, param_grid_json: String) -> Result<String, String> {
+fn run_optimizer(
+    strategy_toml: String,
+    param_grid_json: String,
+    opts_json: String,
+) -> Result<String, String> {
     use quantedge_optimizer::{OptimizerSweep, ParamGrid};
 
     // 1. Parse strategy config from TOML
@@ -165,18 +183,34 @@ fn run_optimizer(strategy_toml: String, param_grid_json: String) -> Result<Strin
     let grid = ParamGrid::from_json_str(&param_grid_json)
         .map_err(|e| format!("Invalid param grid: {}", e))?;
 
-    // 3. Load bar data
-    let start_date = chrono::NaiveDate::from_ymd_opt(2021, 1, 1)
-        .unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(2021, 1, 1).unwrap());
-    let end_date = chrono::NaiveDate::from_ymd_opt(2024, 12, 31)
-        .unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(2024, 12, 31).unwrap());
+    // 3. Parse runtime opts (all fields optional with sensible defaults)
+    let opts: OptimizerOpts = if opts_json.trim().is_empty() {
+        OptimizerOpts::default()
+    } else {
+        serde_json::from_str(&opts_json).map_err(|e| format!("Invalid opts: {}", e))?
+    };
+
+    let start_date = match opts.date_from.as_deref() {
+        Some(s) => chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
+            .map_err(|e| format!("Invalid date_from: {}", e))?,
+        None => chrono::NaiveDate::from_ymd_opt(2021, 1, 1).unwrap(),
+    };
+    let end_date = match opts.date_to.as_deref() {
+        Some(s) => chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
+            .map_err(|e| format!("Invalid date_to: {}", e))?,
+        None => chrono::NaiveDate::from_ymd_opt(2024, 12, 31).unwrap(),
+    };
+
+    let data_dir = opts.data_dir.unwrap_or_else(|| "Data/parquet".to_string());
+    let lot_size = opts.lot_size.unwrap_or(75);
+    let capital = opts.capital.unwrap_or(config.strategy.capital);
 
     let bar_config = BarLoadConfig {
         symbol: config.strategy.underlying.clone(),
         expiry_type: "weekly".to_string(),
         start_date,
         end_date,
-        data_dir: "Data/parquet".to_string(),
+        data_dir,
     };
 
     let bars_raw = BarStream::load(&bar_config)
@@ -195,9 +229,8 @@ fn run_optimizer(strategy_toml: String, param_grid_json: String) -> Result<Strin
         .collect();
 
     // 4. Run optimizer sweep (Rayon parallel)
-    let capital = config.strategy.capital;
     let results = OptimizerSweep::run(
-        &config, &bars, &grid, 15, capital, start_date, end_date,
+        &config, &bars, &grid, lot_size, capital, start_date, end_date,
     );
 
     // 5. Serialize results (top 100) to JSON
@@ -376,10 +409,21 @@ fn run_portfolio(portfolio_json: String, _opts_json: String) -> Result<String, S
 
 #[rustler::nif(schedule = "DirtyCpu")]
 fn load_data_summary(symbol: String, date_from: String, date_to: String) -> Result<String, String> {
-    let start = chrono::NaiveDate::parse_from_str(&date_from, "%Y-%m-%d")
-        .map_err(|e| format!("Invalid date: {}", e))?;
-    let end = chrono::NaiveDate::parse_from_str(&date_to, "%Y-%m-%d")
-        .map_err(|e| format!("Invalid date: {}", e))?;
+    // Tolerate empty / "{}" args by falling back to a wide default window.
+    let parse_or = |s: &str, default_y: i32, default_m: u32, default_d: u32| {
+        let trimmed = s.trim();
+        if trimmed.is_empty() || trimmed == "{}" {
+            chrono::NaiveDate::from_ymd_opt(default_y, default_m, default_d).unwrap()
+        } else {
+            chrono::NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
+                .unwrap_or_else(|_| {
+                    chrono::NaiveDate::from_ymd_opt(default_y, default_m, default_d).unwrap()
+                })
+        }
+    };
+
+    let start = parse_or(&date_from, 2000, 1, 1);
+    let end = parse_or(&date_to, 2099, 12, 31);
 
     let config = BarLoadConfig {
         symbol: symbol.clone(),
@@ -391,11 +435,43 @@ fn load_data_summary(symbol: String, date_from: String, date_to: String) -> Resu
 
     match BarStream::load(&config) {
         Ok(bars) => {
+            // Compute concrete summary stats from the loaded bars.
+            let bar_count = bars.len();
+            let (min_date, max_date) = if bars.is_empty() {
+                (start, end)
+            } else {
+                (bars.first().unwrap().date, bars.last().unwrap().date)
+            };
+
+            let trading_days = bars
+                .iter()
+                .map(|b| b.date)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len();
+
+            let iv_present = bars.iter().filter(|b| b.iv > 0.0).count();
+            let iv_coverage = if bar_count > 0 {
+                (iv_present as f64 / bar_count as f64 * 100.0).round() as u64
+            } else {
+                0
+            };
+
+            let zero_volume = bars.iter().filter(|b| b.volume == 0).count();
+            let zero_volume_pct = if bar_count > 0 {
+                (zero_volume as f64 / bar_count as f64 * 100.0 * 10.0).round() / 10.0
+            } else {
+                0.0
+            };
+
             let summary = serde_json::json!({
                 "symbol": symbol,
-                "bar_count": bars.len(),
-                "date_from": date_from,
-                "date_to": date_to,
+                "bar_count": bar_count,
+                "trading_days": trading_days,
+                "date_from": min_date.to_string(),
+                "date_to": max_date.to_string(),
+                "iv_coverage": iv_coverage,
+                "zero_volume_pct": zero_volume_pct,
+                "missing_days": 0,
             });
             serde_json::to_string(&summary).map_err(|e| e.to_string())
         }

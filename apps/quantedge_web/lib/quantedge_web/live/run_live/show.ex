@@ -261,8 +261,7 @@ defmodule QuantEdgeWeb.RunLive.Show do
 
   defp safe_get_metrics(id) do
     try do
-      {:ok, metrics} = QuantEdge.Duck.Reader.get_metrics(id)
-      metrics
+      QuantEdge.Duck.Reader.get_metrics(id)
     rescue
       _ -> %{}
     end
@@ -270,8 +269,7 @@ defmodule QuantEdgeWeb.RunLive.Show do
 
   defp safe_get_trades(id) do
     try do
-      {:ok, trades} = QuantEdge.Duck.Reader.get_trades(id)
-      trades
+      QuantEdge.Duck.Reader.get_trades(id)
     rescue
       _ -> []
     end
@@ -279,8 +277,7 @@ defmodule QuantEdgeWeb.RunLive.Show do
 
   defp safe_get_equity(id) do
     try do
-      {:ok, equity} = QuantEdge.Duck.Reader.get_equity_curve(id)
-      equity
+      QuantEdge.Duck.Reader.get_equity_curve(id)
     rescue
       _ -> []
     end
@@ -312,36 +309,59 @@ defmodule QuantEdgeWeb.RunLive.Show do
 
   defp fmt_currency(nil), do: "—"
   defp fmt_currency(val) when is_number(val) do
-    sign = if val >= 0, do: "+", else: "-"
-    "#{sign}₹#{abs(round(val))}"
+    if finite?(val) do
+      sign = if val >= 0, do: "+", else: "-"
+      "#{sign}₹#{abs(round(val))}"
+    else
+      "—"
+    end
   end
+  defp fmt_currency(_), do: "—"
 
   defp fmt_pct(nil), do: "—"
-  defp fmt_pct(val) when is_number(val), do: "#{Float.round(val * 1.0, 2)}%"
+  defp fmt_pct(val) when is_number(val) do
+    if finite?(val), do: "#{Float.round(val * 1.0, 2)}%", else: "—"
+  end
+  defp fmt_pct(_), do: "—"
 
   defp fmt_num(nil), do: "—"
-  defp fmt_num(val) when is_number(val), do: "#{Float.round(val * 1.0, 2)}"
+  defp fmt_num(val) when is_number(val) do
+    if finite?(val), do: "#{Float.round(val * 1.0, 2)}", else: "∞"
+  end
+  defp fmt_num(_), do: "—"
 
   defp fmt_int(nil), do: "—"
-  defp fmt_int(val) when is_number(val), do: "#{round(val)}"
+  defp fmt_int(val) when is_number(val) do
+    if finite?(val), do: "#{round(val)}", else: "—"
+  end
+  defp fmt_int(_), do: "—"
 
   defp fmt_trade_pnl(nil), do: "—"
   defp fmt_trade_pnl(val) when is_number(val) do
-    sign = if val >= 0, do: "+", else: ""
-    "#{sign}#{Float.round(val * 1.0, 2)}"
+    if finite?(val) do
+      sign = if val >= 0, do: "+", else: ""
+      "#{sign}#{Float.round(val * 1.0, 2)}"
+    else
+      "—"
+    end
   end
+  defp fmt_trade_pnl(_), do: "—"
 
-  defp pnl_trend(nil), do: nil
-  defp pnl_trend(val) when val >= 0, do: :up
-  defp pnl_trend(_), do: :down
+  defp pnl_trend(val) when is_number(val), do: if(val >= 0, do: :up, else: :down)
+  defp pnl_trend(_), do: nil
 
-  defp pnl_border(nil), do: ""
-  defp pnl_border(val) when val >= 0, do: "stat-card-profit"
-  defp pnl_border(_), do: "stat-card-loss"
+  defp pnl_border(val) when is_number(val), do: if(val >= 0, do: "stat-card-profit", else: "stat-card-loss")
+  defp pnl_border(_), do: ""
 
-  defp pnl_class(nil), do: "text-muted"
-  defp pnl_class(val) when val >= 0, do: "text-profit"
-  defp pnl_class(_), do: "text-loss"
+  defp pnl_class(val) when is_number(val), do: if(val >= 0, do: "text-profit", else: "text-loss")
+  defp pnl_class(_), do: "text-muted"
+
+  # Float NaN/Infinity guard. Erlang/Elixir Float.round/2 raises on these.
+  defp finite?(v) when is_integer(v), do: true
+  defp finite?(v) when is_float(v) do
+    v == v and v != :infinity and abs(v) < 1.0e308
+  end
+  defp finite?(_), do: false
 
   defp paged_trades(trades, page) do
     trades
@@ -389,6 +409,8 @@ defmodule QuantEdgeWeb.RunLive.Show do
     |> Enum.join(" ")
   end
 
-  defp format_metric_val(val) when is_float(val), do: Float.round(val, 4) |> to_string()
+  defp format_metric_val(val) when is_float(val) do
+    if finite?(val), do: val |> Float.round(4) |> to_string(), else: "∞"
+  end
   defp format_metric_val(val), do: to_string(val)
 end

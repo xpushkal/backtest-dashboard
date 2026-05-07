@@ -204,12 +204,14 @@ impl BarStream {
     }
 
     /// Convert a Polars DataFrame to Vec<Bar>.
+    ///
+    /// Tolerant of two minor schema variations seen in the wild:
+    /// - `timestamp` column may be missing (we compute it from date+time)
+    /// - `volume` may be stored as either i64 or f64
     fn dataframe_to_bars(df: &DataFrame) -> Result<Vec<Bar>, Box<dyn std::error::Error>> {
         let n = df.height();
         let mut bars = Vec::with_capacity(n);
 
-        // Extract columns
-        let timestamps = df.column("timestamp")?.str()?;
         let dates = df.column("date")?.date()?;
         let times = df.column("time")?.str()?;
         let weekdays = df.column("weekday")?.str()?;
@@ -221,28 +223,47 @@ impl BarStream {
         let highs = df.column("high")?.f64()?;
         let lows = df.column("low")?.f64()?;
         let closes = df.column("close")?.f64()?;
-        let volumes = df.column("volume")?.i64()?;
         let strikes = df.column("strike")?.f64()?;
         let ois = df.column("oi")?.f64()?;
         let spots = df.column("spot")?.f64()?;
         let ivs = df.column("iv")?.f64()?;
 
+        // Volume tolerance: accept i64 or f64
+        let volume_col = df.column("volume")?;
+        let volume_i64 = volume_col.i64().ok();
+        let volume_f64 = volume_col.f64().ok();
+
+        // Timestamp is optional — compute from date+time when missing
+        let timestamps_opt = df.column("timestamp").ok().and_then(|c| c.str().ok().cloned());
+
         for i in 0..n {
             // Convert Polars date (days since epoch) to NaiveDate
-            let date_val = dates.phys.get(i).unwrap_or(0);
+            let date_val = dates.get(i).unwrap_or(0);
             let date = NaiveDate::from_num_days_from_ce_opt(
                 date_val + 719_163, // 1970-01-01 is day 719163 in CE
             )
             .unwrap_or_else(|| NaiveDate::from_ymd_opt(1970, 1, 1).unwrap());
 
-            // Parse time string
             let time_str = times.get(i).unwrap_or("00:00:00");
             let time = NaiveTime::parse_from_str(time_str, "%H:%M:%S")
                 .or_else(|_| NaiveTime::parse_from_str(time_str, "%H:%M"))
                 .unwrap_or_else(|_| NaiveTime::from_hms_opt(0, 0, 0).unwrap());
 
+            let timestamp = match &timestamps_opt {
+                Some(col) => col.get(i).unwrap_or("").to_string(),
+                None => format!("{} {}", date, time),
+            };
+
+            let volume = if let Some(col) = &volume_i64 {
+                col.get(i).unwrap_or(0)
+            } else if let Some(col) = &volume_f64 {
+                col.get(i).unwrap_or(0.0) as i64
+            } else {
+                0
+            };
+
             bars.push(Bar {
-                timestamp: timestamps.get(i).unwrap_or("").to_string(),
+                timestamp,
                 date,
                 time,
                 weekday: weekdays.get(i).unwrap_or("").to_string(),
@@ -254,7 +275,7 @@ impl BarStream {
                 high: highs.get(i).unwrap_or(0.0),
                 low: lows.get(i).unwrap_or(0.0),
                 close: closes.get(i).unwrap_or(0.0),
-                volume: volumes.get(i).unwrap_or(0),
+                volume,
                 strike: strikes.get(i).unwrap_or(0.0),
                 oi: ois.get(i).unwrap_or(0.0),
                 spot: spots.get(i).unwrap_or(0.0),
