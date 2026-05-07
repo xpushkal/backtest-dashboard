@@ -78,7 +78,7 @@ defmodule QuantEdgeWeb.DataExplorerLive do
           </div>
 
           <%!-- IV Coverage Bar --%>
-          <.progress_bar percent={summary.iv_coverage * 1.0} />
+          <.progress_bar percent={(summary.iv_coverage || 0) * 1.0} />
 
           <%!-- Quality Indicators --%>
           <div class="mt-2">
@@ -143,7 +143,9 @@ defmodule QuantEdgeWeb.DataExplorerLive do
 
   defp safe_load_summary(symbol) do
     try do
-      case apply(QuantEdge.NIF, :load_data_summary, [symbol, "{}", ""]) do
+      # Pass empty strings — the NIF interprets these as "scan everything"
+      # and computes the actual min/max date from the loaded bars.
+      case apply(QuantEdge.NIF, :load_data_summary, [symbol, "", ""]) do
         {:ok, json} ->
           data = Jason.decode!(json)
           {:ok, %{
@@ -181,23 +183,51 @@ defmodule QuantEdgeWeb.DataExplorerLive do
 
     if File.dir?(parquet_dir) do
       parquet_dir
-      |> File.ls!()
-      |> Enum.filter(&String.ends_with?(&1, ".parquet"))
-      |> Enum.sort()
-      |> Enum.map(fn name ->
-        path = Path.join(parquet_dir, name)
-        stat = File.stat!(path)
-        %{
-          name: name,
-          size_mb: Float.round(stat.size / 1_000_000, 1),
-          modified: Calendar.strftime(stat.mtime |> NaiveDateTime.from_erl!(), "%d %b %Y")
-        }
-      end)
+      |> walk_parquet()
+      |> Enum.sort_by(& &1.name)
     else
       []
     end
   rescue
     _ -> []
+  end
+
+  # Recursively walk Data/parquet/{symbol}/{expiry}/{year}/{MM}.parquet
+  defp walk_parquet(dir) do
+    base = Path.join([File.cwd!(), "Data", "parquet"])
+
+    case File.ls(dir) do
+      {:ok, entries} ->
+        entries
+        |> Enum.flat_map(fn entry ->
+          path = Path.join(dir, entry)
+
+          cond do
+            File.dir?(path) ->
+              walk_parquet(path)
+
+            String.ends_with?(entry, ".parquet") ->
+              stat = File.stat!(path)
+              relative = Path.relative_to(path, base)
+              [
+                %{
+                  name: relative,
+                  size_mb: Float.round(stat.size / 1_000_000, 1),
+                  modified:
+                    stat.mtime
+                    |> NaiveDateTime.from_erl!()
+                    |> Calendar.strftime("%d %b %Y")
+                }
+              ]
+
+            true ->
+              []
+          end
+        end)
+
+      _ ->
+        []
+    end
   end
 
   defp compute_total_storage(files) do

@@ -12,52 +12,32 @@ defmodule QuantEdge.Workers.PortfolioWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"portfolio_run_id" => run_id, "portfolio_json" => portfolio_json}}) do
-    broadcast(run_id, :running)
+    broadcast(run_id, {:portfolio_started, run_id})
     Logger.info("Portfolio backtest started: #{run_id}")
 
     case NIF.run_portfolio(portfolio_json, "{}") do
       {:ok, result_json} ->
         result = Jason.decode!(result_json)
 
-        # Store result summary in Postgres
-        summary = %{
-          "total_trades" => result["total_trades"],
-          "portfolio_metrics" => result["portfolio_metrics"],
-          "correlation_matrix" => result["correlation_matrix"],
-          "strategy_count" => length(result["strategies"] || [])
-        }
-
-        try do
-          QuantEdge.Runs.complete_run(run_id, summary)
-        rescue
-          e -> Logger.warning("Failed to update run: #{Exception.message(e)}")
-        end
-
-        # Store detailed results in DuckDB
+        # Store detailed results in DuckDB (best-effort).
         try do
           store_portfolio_results(run_id, result)
         rescue
           e -> Logger.warning("Failed to store DuckDB results: #{Exception.message(e)}")
         end
 
-        broadcast(run_id, {:completed, summary})
+        broadcast(run_id, {:portfolio_completed, run_id, result})
         Logger.info("Portfolio completed: #{run_id} — #{result["total_trades"]} total trades")
         :ok
 
       {:error, reason} ->
-        try do
-          QuantEdge.Runs.fail_run(run_id, reason)
-        rescue
-          _ -> :ok
-        end
-
-        broadcast(run_id, {:error, reason})
+        broadcast(run_id, {:portfolio_failed, run_id, reason})
         Logger.error("Portfolio failed: #{run_id} — #{reason}")
         {:error, reason}
     end
   end
 
-  # Fallback for legacy format
+  # Legacy arg name fallback.
   def perform(%Oban.Job{args: %{"portfolio_run_id" => run_id, "strategies_json" => strategies_json}}) do
     perform(%Oban.Job{args: %{"portfolio_run_id" => run_id, "portfolio_json" => strategies_json}})
   end
@@ -99,8 +79,12 @@ defmodule QuantEdge.Workers.PortfolioWorker do
     end
   end
 
-  defp broadcast(run_id, message) do
-    Phoenix.PubSub.broadcast(QuantEdge.PubSub, "portfolio:updates", {:portfolio_progress, run_id, message})
-    Phoenix.PubSub.broadcast(QuantEdge.PubSub, "portfolio:#{run_id}", message)
+  defp broadcast(_run_id, message) do
+    Phoenix.PubSub.broadcast(QuantEdge.PubSub, "portfolio:updates", message)
+    case message do
+      {_, run_id, _} -> Phoenix.PubSub.broadcast(QuantEdge.PubSub, "portfolio:#{run_id}", message)
+      {_, run_id} -> Phoenix.PubSub.broadcast(QuantEdge.PubSub, "portfolio:#{run_id}", message)
+      _ -> :ok
+    end
   end
 end

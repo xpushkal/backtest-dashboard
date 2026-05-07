@@ -320,12 +320,16 @@ impl MetricsEngine {
         (sum_sq / count as f64).sqrt()
     }
 
-    /// Standard deviation of a series.
+    /// Sample standard deviation (Bessel-corrected, n-1).
+    ///
+    /// Matches `quantedge_portfolio::PortfolioMetrics::compute_std` so the same
+    /// strategy reports the same Sharpe whether viewed standalone or inside a
+    /// portfolio.
     fn compute_std(values: &[f64]) -> f64 {
         if values.len() < 2 { return 0.0; }
         let n = values.len() as f64;
         let mean = values.iter().sum::<f64>() / n;
-        let var = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n;
+        let var = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n - 1.0);
         var.sqrt()
     }
 

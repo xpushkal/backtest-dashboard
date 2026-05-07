@@ -443,19 +443,29 @@ defmodule QuantEdgeWeb.OptimizerLive do
 
   defp safe_enqueue_optimizer(strategy_id, params) do
     try do
-      param_grid = Enum.map(params, fn p ->
-        %{name: p["param_name"], min: p["min"], max: p["max"], step: p["step"]}
-      end)
+      # Coerce form strings into numbers so the Rust optimizer can deserialize.
+      param_grid =
+        Enum.map(params, fn p ->
+          %{
+            "name" => p["param_name"] || "sl_value",
+            "min" => parse_float(p["min"], 0.0),
+            "max" => parse_float(p["max"], 0.0),
+            "step" => parse_float(p["step"], 1.0)
+          }
+        end)
+
+      total_combos =
+        Enum.reduce(params, 1, fn p, acc ->
+          min = parse_float(p["min"], 0)
+          max = parse_float(p["max"], 0)
+          step = parse_float(p["step"], 1)
+          acc * if step > 0, do: round((max - min) / step) + 1, else: 1
+        end)
 
       attrs = %{
         strategy_id: strategy_id,
         param_grid: param_grid,
-        total_combos: Enum.reduce(params, 1, fn p, acc ->
-          min = parse_float(p["min"], 0)
-          max = parse_float(p["max"], 0)
-          step = parse_float(p["step"], 1)
-          acc * (if step > 0, do: round((max - min) / step) + 1, else: 1)
-        end)
+        total_combos: total_combos
       }
 
       with {:ok, run} <- QuantEdge.Runs.create_optimizer_run(attrs),

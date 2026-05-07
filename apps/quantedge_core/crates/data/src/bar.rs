@@ -238,7 +238,7 @@ impl BarStream {
 
         for i in 0..n {
             // Convert Polars date (days since epoch) to NaiveDate
-            let date_val = dates.get(i).unwrap_or(0);
+            let date_val = dates.phys.get(i).unwrap_or(0);
             let date = NaiveDate::from_num_days_from_ce_opt(
                 date_val + 719_163, // 1970-01-01 is day 719163 in CE
             )

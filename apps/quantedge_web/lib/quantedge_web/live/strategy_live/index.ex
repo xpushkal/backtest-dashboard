@@ -487,45 +487,45 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
   defp generate_toml(form, legs) do
     strategy_section = """
     [strategy]
-    name = "#{form["name"] || "Unnamed"}"
-    underlying = "#{form["underlying"] || "BANKNIFTY"}"
-    capital = #{form["capital"] || "100000"}.0
-    entry_time = "#{form["entry_time"] || "09:20"}"
-    exit_time = "#{form["exit_time"] || "15:15"}"
-    brokerage_per_lot = #{form["brokerage"] || "40"}.0
-    slippage_model = "#{form["slippage_model"] || "fixed_pts"}"
-    slippage_value = #{form["slippage_value"] || "1.0"}
-    stt_on_sell = #{form["stt_on_sell"] || "true"}
+    name = "#{escape_str(form["name"] || "Unnamed")}"
+    underlying = "#{escape_str(form["underlying"] || "NIFTY")}"
+    capital = #{toml_float(form["capital"], 100_000.0)}
+    entry_time = "#{escape_str(form["entry_time"] || "09:20")}"
+    exit_time = "#{escape_str(form["exit_time"] || "15:15")}"
+    brokerage_per_lot = #{toml_float(form["brokerage"], 40.0)}
+    slippage_model = "#{escape_str(form["slippage_model"] || "fixed_pts")}"
+    slippage_value = #{toml_float(form["slippage_value"], 1.0)}
+    stt_on_sell = #{toml_bool(form["stt_on_sell"], true)}
     """
 
     legs_section =
       legs
       |> Enum.map(fn leg ->
         sl_enabled = leg["sl_type"] != "none" && leg["sl_type"] != ""
-        tp_enabled = leg["target_value"] && leg["target_value"] != ""
+        tp_enabled = leg["target_value"] not in [nil, ""]
         trail_enabled = leg["trail_sl_enabled"] == "true"
         reentry_on = leg["reentry_on_sl"] == "true"
 
         """
 
         [[legs]]
-        option_type = "#{leg["option_type"] || "CE"}"
-        position = "#{leg["position"] || "sell"}"
-        lots = #{leg["lots"] || "1"}
-        expiry = "#{leg["expiry"] || "weekly"}"
+        option_type = "#{escape_str(leg["option_type"] || "CE")}"
+        position = "#{escape_str(leg["position"] || "sell")}"
+        lots = #{toml_int(leg["lots"], 1)}
+        expiry = "#{escape_str(leg["expiry"] || "weekly")}"
         strike_mode = "atm_offset"
-        strike_offset = #{leg["strike_offset"] || "0"}
+        strike_offset = #{toml_int(leg["strike_offset"], 0)}
         stop_loss_enabled = #{sl_enabled}
-        stop_loss_type = "#{leg["sl_type"] || "percent_of_premium"}"
-        stop_loss_value = #{leg["sl_value"] || "30.0"}
+        stop_loss_type = "#{escape_str(leg["sl_type"] || "percent_of_premium")}"
+        stop_loss_value = #{toml_float(leg["sl_value"], 30.0)}
         target_profit_enabled = #{tp_enabled}
-        target_profit_type = "#{leg["target_type"] || "percent_of_premium"}"
-        target_profit_value = #{if tp_enabled, do: leg["target_value"], else: "0.0"}
+        target_profit_type = "#{escape_str(leg["target_type"] || "percent_of_premium")}"
+        target_profit_value = #{toml_float(leg["target_value"], 0.0)}
         trail_sl_enabled = #{trail_enabled}
-        trail_sl_activate_at = #{leg["trail_activate"] || "0.0"}
-        trail_sl_lock_in = #{leg["trail_lock"] || "0.0"}
+        trail_sl_activate_at = #{toml_float(leg["trail_activate"], 0.0)}
+        trail_sl_lock_in = #{toml_float(leg["trail_lock"], 0.0)}
         reentry_on_sl = #{reentry_on}
-        reentry_max_attempts = #{leg["reentry_max"] || "2"}
+        reentry_max_attempts = #{toml_int(leg["reentry_max"], 2)}
         """
       end)
       |> Enum.join("")
@@ -537,15 +537,71 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
 
     [overall]
     overall_sl_enabled = #{overall_sl}
-    overall_sl_type = "#{form["overall_sl_type"] || "percent_of_premium"}"
-    overall_sl_value = #{form["overall_sl_value"] || "0.0"}
+    overall_sl_type = "#{escape_str(form["overall_sl_type"] || "percent_of_premium")}"
+    overall_sl_value = #{toml_float(form["overall_sl_value"], 0.0)}
     overall_target_enabled = #{overall_target}
-    overall_target_type = "#{form["overall_target_type"] || "percent_of_premium"}"
-    overall_target_value = #{form["overall_target_value"] || "0.0"}
+    overall_target_type = "#{escape_str(form["overall_target_type"] || "percent_of_premium")}"
+    overall_target_value = #{toml_float(form["overall_target_value"], 0.0)}
     """
 
     String.trim(strategy_section <> legs_section <> overall_section)
   end
+
+  # ─── TOML serialization helpers ─────────────────────────────
+
+  defp escape_str(nil), do: ""
+  defp escape_str(s) when is_binary(s) do
+    s |> String.replace("\\", "\\\\") |> String.replace("\"", "\\\"")
+  end
+  defp escape_str(other), do: escape_str(to_string(other))
+
+  defp toml_float(nil, default), do: format_float(default)
+  defp toml_float("", default), do: format_float(default)
+  defp toml_float(v, _default) when is_number(v), do: format_float(v)
+  defp toml_float(v, default) when is_binary(v) do
+    case Float.parse(v) do
+      {f, _} -> format_float(f)
+      :error ->
+        case Integer.parse(v) do
+          {i, _} -> format_float(i * 1.0)
+          :error -> format_float(default)
+        end
+    end
+  end
+  defp toml_float(_, default), do: format_float(default)
+
+  defp format_float(v) when is_integer(v), do: "#{v}.0"
+  defp format_float(v) when is_float(v) do
+    cond do
+      v != v -> "0.0"
+      abs(v) > 1.0e308 -> "0.0"
+      v == trunc(v) -> "#{trunc(v)}.0"
+      true -> Float.to_string(v)
+    end
+  end
+  defp format_float(_), do: "0.0"
+
+  defp toml_int(nil, default), do: to_string(default)
+  defp toml_int("", default), do: to_string(default)
+  defp toml_int(v, _default) when is_integer(v), do: to_string(v)
+  defp toml_int(v, _default) when is_float(v), do: to_string(trunc(v))
+  defp toml_int(v, default) when is_binary(v) do
+    case Integer.parse(v) do
+      {i, _} -> to_string(i)
+      :error ->
+        case Float.parse(v) do
+          {f, _} -> to_string(trunc(f))
+          :error -> to_string(default)
+        end
+    end
+  end
+  defp toml_int(_, default), do: to_string(default)
+
+  defp toml_bool("true", _), do: "true"
+  defp toml_bool("false", _), do: "false"
+  defp toml_bool(true, _), do: "true"
+  defp toml_bool(false, _), do: "false"
+  defp toml_bool(_, default), do: to_string(default)
 
   defp safe_list_strategies do
     try do
@@ -563,7 +619,77 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
     end
   end
 
-  defp parse_legs_from_toml(_strategy), do: [default_leg()]
+  # Parse the saved TOML back into form-shaped leg maps so editing preserves config.
+  defp parse_legs_from_toml(strategy) do
+    case strategy do
+      %{config_toml: toml} when is_binary(toml) and toml != "" ->
+        toml
+        |> String.split("[[legs]]")
+        |> Enum.drop(1)
+        |> Enum.map(&parse_leg_block/1)
+        |> case do
+          [] -> [default_leg()]
+          legs -> legs
+        end
+
+      _ ->
+        [default_leg()]
+    end
+  end
+
+  # The TOML body for a single [[legs]] section. We extract each known field
+  # with a regex; the form rebuilds the TOML from these on save, so a small
+  # number of unparsed fields is acceptable.
+  defp parse_leg_block(block) do
+    # Stop at the next section header so a leg block doesn't bleed into [overall].
+    block = block |> String.split(~r/^\[/m, parts: 2) |> hd()
+
+    %{
+      "option_type" => extract_string(block, "option_type", "CE"),
+      "position" => extract_string(block, "position", "sell"),
+      "lots" => extract_number(block, "lots", "1"),
+      "expiry" => extract_string(block, "expiry", "weekly"),
+      "strike_offset" => extract_number(block, "strike_offset", "0"),
+      "sl_type" => extract_string(block, "stop_loss_type", "percent_of_premium"),
+      "sl_value" => extract_number(block, "stop_loss_value", "30"),
+      "target_value" => extract_optional_number(block, "target_profit_value"),
+      "trail_sl_enabled" => extract_bool(block, "trail_sl_enabled"),
+      "trail_activate" => extract_number(block, "trail_sl_activate_at", "0"),
+      "trail_lock" => extract_number(block, "trail_sl_lock_in", "0"),
+      "reentry_on_sl" => extract_bool(block, "reentry_on_sl"),
+      "reentry_max" => extract_number(block, "reentry_max_attempts", "2")
+    }
+  end
+
+  defp extract_string(block, key, default) do
+    case Regex.run(~r/^\s*#{Regex.escape(key)}\s*=\s*"([^"]*)"/m, block) do
+      [_, val] -> val
+      _ -> default
+    end
+  end
+
+  defp extract_number(block, key, default) do
+    case Regex.run(~r/^\s*#{Regex.escape(key)}\s*=\s*(-?\d+(?:\.\d+)?)/m, block) do
+      [_, val] -> val
+      _ -> default
+    end
+  end
+
+  defp extract_optional_number(block, key) do
+    case Regex.run(~r/^\s*#{Regex.escape(key)}\s*=\s*(-?\d+(?:\.\d+)?)/m, block) do
+      [_, "0"] -> ""
+      [_, "0.0"] -> ""
+      [_, val] -> val
+      _ -> ""
+    end
+  end
+
+  defp extract_bool(block, key) do
+    case Regex.run(~r/^\s*#{Regex.escape(key)}\s*=\s*(true|false)/m, block) do
+      [_, "true"] -> "true"
+      _ -> "false"
+    end
+  end
 
   defp count_legs(strategy) do
     case strategy.config_toml do

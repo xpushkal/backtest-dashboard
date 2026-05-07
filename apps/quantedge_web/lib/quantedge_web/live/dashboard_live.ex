@@ -119,13 +119,13 @@ defmodule QuantEdgeWeb.DashboardLive do
             <td class="text-sm">{format_date(run.date_from)} — {format_date(run.date_to)}</td>
             <td><.status_badge status={run.status} /></td>
             <td class="col-number">
-              <span :if={run.result_summary["total_pnl"]} class={"text-mono #{if run.result_summary["total_pnl"] >= 0, do: "text-profit", else: "text-loss"}"}>
-                ₹{format_num(run.result_summary["total_pnl"])}
+              <span :if={is_number(run.result_summary["total_pnl_net"])} class={"text-mono #{if run.result_summary["total_pnl_net"] >= 0, do: "text-profit", else: "text-loss"}"}>
+                ₹{format_num(run.result_summary["total_pnl_net"])}
               </span>
-              <span :if={!run.result_summary["total_pnl"]} class="text-muted">—</span>
+              <span :if={!is_number(run.result_summary["total_pnl_net"])} class="text-muted">—</span>
             </td>
             <td class="col-number text-mono">
-              {run.result_summary["sharpe_ratio"] || "—"}
+              {format_sharpe(run.result_summary["sharpe_ratio"])}
             </td>
             <td class="text-sm text-muted">{format_datetime(run.inserted_at)}</td>
             <td>
@@ -160,7 +160,7 @@ defmodule QuantEdgeWeb.DashboardLive do
   defp find_best_sharpe(runs) do
     runs
     |> Enum.map(& &1.result_summary["sharpe_ratio"])
-    |> Enum.reject(&is_nil/1)
+    |> Enum.filter(&finite_number?/1)
     |> case do
       [] -> "—"
       values -> values |> Enum.max() |> Float.round(2) |> to_string()
@@ -170,8 +170,8 @@ defmodule QuantEdgeWeb.DashboardLive do
   defp compute_total_pnl([]), do: "—"
   defp compute_total_pnl(runs) do
     runs
-    |> Enum.map(& &1.result_summary["total_pnl"])
-    |> Enum.reject(&is_nil/1)
+    |> Enum.map(& &1.result_summary["total_pnl_net"])
+    |> Enum.filter(&finite_number?/1)
     |> case do
       [] -> "—"
       values ->
@@ -187,6 +187,18 @@ defmodule QuantEdgeWeb.DashboardLive do
   defp format_datetime(nil), do: "—"
   defp format_datetime(dt), do: Calendar.strftime(dt, "%d %b, %H:%M")
 
-  defp format_num(nil), do: "—"
-  defp format_num(num) when is_number(num), do: "#{round(num)}"
+  defp format_num(num) when is_integer(num), do: "#{num}"
+  defp format_num(num) when is_float(num) do
+    if finite_number?(num), do: "#{round(num)}", else: "—"
+  end
+  defp format_num(_), do: "—"
+
+  defp format_sharpe(num) when is_number(num) do
+    if finite_number?(num), do: Float.round(num * 1.0, 2) |> to_string(), else: "—"
+  end
+  defp format_sharpe(_), do: "—"
+
+  defp finite_number?(v) when is_integer(v), do: true
+  defp finite_number?(v) when is_float(v), do: v == v and abs(v) < 1.0e308
+  defp finite_number?(_), do: false
 end
