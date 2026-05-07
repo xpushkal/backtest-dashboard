@@ -37,12 +37,17 @@ defmodule QuantEdgeWeb.PortfolioLive do
         MapSet.put(socket.assigns.selected, id)
       end
 
-    # Auto-distribute allocations equally
+    # Auto-distribute allocations equally, giving remainder to the last strategy
     n = MapSet.size(selected)
     allocations =
       if n > 0 do
-        pct = Float.round(100.0 / n, 1)
-        selected |> Enum.into(%{}, &{&1, pct})
+        base_pct = Float.round(100.0 / n, 1)
+        ids = MapSet.to_list(selected)
+        {leading, [last_id]} = Enum.split(ids, n - 1)
+        remainder = Float.round(100.0 - base_pct * (n - 1), 1)
+        leading
+        |> Enum.into(%{}, &{&1, base_pct})
+        |> Map.put(last_id, remainder)
       else
         %{}
       end
@@ -75,10 +80,7 @@ defmodule QuantEdgeWeb.PortfolioLive do
       MapSet.size(socket.assigns.selected) < 2 ->
         {:noreply, put_flash(socket, :error, "Select at least 2 strategies")}
 
-      Float.round(
-        socket.assigns.allocations |> Map.values() |> Enum.sum() |> Kernel.*(1.0),
-        1
-      ) != 100.0 ->
+      abs((socket.assigns.allocations |> Map.values() |> Enum.sum()) - 100.0) > 0.15 ->
         {:noreply, put_flash(socket, :error, "Allocations must sum to 100%")}
 
       true ->
@@ -202,7 +204,7 @@ defmodule QuantEdgeWeb.PortfolioLive do
 
   @impl true
   def render(assigns) do
-    alloc_sum = assigns.allocations |> Map.values() |> Enum.sum() |> Float.round(1)
+    alloc_sum = assigns.allocations |> Map.values() |> Enum.sum() |> then(&Float.round(&1 * 1.0, 1))
     assigns = assign(assigns, :alloc_sum, alloc_sum)
 
     ~H"""
@@ -278,7 +280,7 @@ defmodule QuantEdgeWeb.PortfolioLive do
               />
             </div>
 
-            <div class={"flex-between mt-4 #{if @alloc_sum != 100.0, do: "text-loss", else: "text-profit"}"}>
+            <div class={"flex-between mt-4 #{if abs(@alloc_sum - 100.0) > 0.15, do: "text-loss", else: "text-profit"}"}>
               <span class="text-sm">Total Allocation</span>
               <span class="text-mono">{@alloc_sum}%</span>
             </div>
@@ -288,7 +290,7 @@ defmodule QuantEdgeWeb.PortfolioLive do
           <button
             class="btn btn-primary btn-lg w-full"
             phx-click="run_portfolio"
-            disabled={@running || MapSet.size(@selected) < 2 || @alloc_sum != 100.0}
+            disabled={@running || MapSet.size(@selected) < 2 || abs(@alloc_sum - 100.0) > 0.15}
           >
             {if @running, do: "Running...", else: "🚀 Run Portfolio Backtest"}
           </button>

@@ -27,7 +27,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
     |> assign(:page_title, "New Strategy")
     |> assign(:show_form, true)
     |> assign(:editing_strategy, nil)
-    |> assign(:form, build_form(%{}))
+    |> assign(:form, build_form(default_form_params()))
     |> assign(:legs, [default_leg()])
     |> assign(:toml_preview, "")
   end
@@ -35,19 +35,13 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
   defp apply_action(socket, :edit, %{"id" => id}) do
     strategy = safe_get_strategy(id)
     legs = parse_legs_from_toml(strategy)
+    form_params = parse_strategy_from_toml(strategy)
 
     socket
     |> assign(:page_title, "Edit Strategy")
     |> assign(:show_form, true)
     |> assign(:editing_strategy, strategy)
-    |> assign(:form, build_form(%{
-      "name" => strategy.name,
-      "underlying" => strategy.underlying,
-      "capital" => "100000",
-      "entry_time" => "09:20",
-      "exit_time" => "15:15",
-      "lot_size" => "15"
-    }))
+    |> assign(:form, build_form(form_params))
     |> assign(:legs, legs)
     |> assign(:toml_preview, strategy.config_toml || "")
   end
@@ -249,19 +243,19 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
         <div class="grid-4 mb-4">
           <div class="input-group">
             <label class="input-label">Capital (₹)</label>
-            <input type="number" name="capital" value={@form.params["capital"] || "100000"} class="input" />
+            <input type="number" name="capital" value={@form.params["capital"]} class="input" phx-debounce="blur" />
           </div>
           <div class="input-group">
             <label class="input-label">Entry Time</label>
-            <input type="text" name="entry_time" value={@form.params["entry_time"] || "09:20"} class="input" placeholder="HH:MM" />
+            <input type="text" name="entry_time" value={@form.params["entry_time"]} class="input" placeholder="HH:MM" phx-debounce="blur" />
           </div>
           <div class="input-group">
             <label class="input-label">Exit Time</label>
-            <input type="text" name="exit_time" value={@form.params["exit_time"] || "15:15"} class="input" placeholder="HH:MM" />
+            <input type="text" name="exit_time" value={@form.params["exit_time"]} class="input" placeholder="HH:MM" phx-debounce="blur" />
           </div>
           <div class="input-group">
             <label class="input-label">Brokerage/Lot (₹)</label>
-            <input type="number" name="brokerage" value={@form.params["brokerage"] || "40"} class="input" />
+            <input type="number" name="brokerage" value={@form.params["brokerage"]} class="input" phx-debounce="blur" />
           </div>
         </div>
         <div class="grid-4 mb-6">
@@ -274,7 +268,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
           </div>
           <div class="input-group">
             <label class="input-label">Slippage Value</label>
-            <input type="number" step="0.1" name="slippage_value" value={@form.params["slippage_value"] || "1.0"} class="input" />
+            <input type="number" step="0.1" name="slippage_value" value={@form.params["slippage_value"]} class="input" phx-debounce="blur" />
           </div>
           <div class="input-group">
             <label class="input-label">STT on Sell</label>
@@ -285,7 +279,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
           </div>
           <div class="input-group">
             <label class="input-label">Max Concurrent</label>
-            <input type="number" name="max_concurrent" value={@form.params["max_concurrent"] || "1"} class="input" />
+            <input type="number" name="max_concurrent" value={@form.params["max_concurrent"]} class="input" phx-debounce="blur" />
           </div>
         </div>
 
@@ -318,11 +312,11 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
             </div>
             <div class="input-group">
               <label class="input-label">Lots</label>
-              <input type="number" name={"leg_lots_#{idx}"} value={leg["lots"] || "1"} class="input" phx-change="update_leg" phx-value-index={idx} />
+              <input type="number" name={"leg_lots_#{idx}"} value={leg["lots"] || "1"} class="input" phx-change="update_leg" phx-value-index={idx} phx-debounce="blur" />
             </div>
             <div class="input-group">
               <label class="input-label">Strike Offset</label>
-              <input type="number" name={"leg_strike_offset_#{idx}"} value={leg["strike_offset"] || "0"} class="input" phx-change="update_leg" phx-value-index={idx} />
+              <input type="number" name={"leg_strike_offset_#{idx}"} value={leg["strike_offset"] || "0"} class="input" phx-change="update_leg" phx-value-index={idx} phx-debounce="blur" />
             </div>
           </div>
 
@@ -346,11 +340,11 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
             </div>
             <div class="input-group">
               <label class="input-label">SL Value</label>
-              <input type="number" step="0.1" name={"leg_sl_value_#{idx}"} value={leg["sl_value"] || "30"} class="input" phx-change="update_leg" phx-value-index={idx} />
+              <input type="number" step="0.1" name={"leg_sl_value_#{idx}"} value={leg["sl_value"] || "30"} class="input" phx-change="update_leg" phx-value-index={idx} phx-debounce="blur" />
             </div>
             <div class="input-group">
               <label class="input-label">Target Value</label>
-              <input type="number" step="0.1" name={"leg_target_value_#{idx}"} value={leg["target_value"] || ""} class="input" placeholder="Optional" phx-change="update_leg" phx-value-index={idx} />
+              <input type="number" step="0.1" name={"leg_target_value_#{idx}"} value={leg["target_value"] || ""} class="input" placeholder="Optional" phx-change="update_leg" phx-value-index={idx} phx-debounce="blur" />
             </div>
           </div>
 
@@ -365,7 +359,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
             </div>
             <div class="input-group">
               <label class="input-label">Trail Activate At</label>
-              <input type="number" step="0.1" name={"leg_trail_activate_#{idx}"} value={leg["trail_activate"] || "0"} class="input" phx-change="update_leg" phx-value-index={idx} />
+              <input type="number" step="0.1" name={"leg_trail_activate_#{idx}"} value={leg["trail_activate"] || "0"} class="input" phx-change="update_leg" phx-value-index={idx} phx-debounce="blur" />
             </div>
             <div class="input-group">
               <label class="input-label">Re-entry on SL</label>
@@ -376,7 +370,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
             </div>
             <div class="input-group">
               <label class="input-label">Max Re-entries</label>
-              <input type="number" name={"leg_reentry_max_#{idx}"} value={leg["reentry_max"] || "2"} class="input" phx-change="update_leg" phx-value-index={idx} />
+              <input type="number" name={"leg_reentry_max_#{idx}"} value={leg["reentry_max"] || "2"} class="input" phx-change="update_leg" phx-value-index={idx} phx-debounce="blur" />
             </div>
           </div>
         </div>
@@ -401,7 +395,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
             </div>
             <div class="input-group">
               <label class="input-label">Overall SL Value</label>
-              <input type="number" step="0.1" name="overall_sl_value" value={@form.params["overall_sl_value"] || "0"} class="input" />
+              <input type="number" step="0.1" name="overall_sl_value" value={@form.params["overall_sl_value"]} class="input" phx-debounce="blur" />
             </div>
           </div>
           <div class="grid-3 mt-3">
@@ -421,7 +415,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
             </div>
             <div class="input-group">
               <label class="input-label">Overall Target Value</label>
-              <input type="number" step="0.1" name="overall_target_value" value={@form.params["overall_target_value"] || "0"} class="input" />
+              <input type="number" step="0.1" name="overall_target_value" value={@form.params["overall_target_value"]} class="input" phx-debounce="blur" />
             </div>
           </div>
         </div>
@@ -464,6 +458,80 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
 
   defp build_form(params) do
     %{params: params}
+  end
+
+  defp default_form_params do
+    %{
+      "name" => "",
+      "underlying" => "NIFTY",
+      "instrument_type" => "options",
+      "capital" => "100000",
+      "entry_time" => "09:20",
+      "exit_time" => "15:15",
+      "brokerage" => "40",
+      "slippage_model" => "fixed_pts",
+      "slippage_value" => "1.0",
+      "stt_on_sell" => "true",
+      "max_concurrent" => "1",
+      "overall_sl_enabled" => "false",
+      "overall_sl_type" => "percent_of_premium",
+      "overall_sl_value" => "0",
+      "overall_target_enabled" => "false",
+      "overall_target_type" => "percent_of_premium",
+      "overall_target_value" => "0"
+    }
+  end
+
+  defp parse_strategy_from_toml(%{config_toml: nil} = strategy) do
+    Map.merge(default_form_params(), %{"name" => strategy.name, "underlying" => strategy.underlying})
+  end
+  defp parse_strategy_from_toml(%{config_toml: ""} = strategy) do
+    Map.merge(default_form_params(), %{"name" => strategy.name, "underlying" => strategy.underlying})
+  end
+  defp parse_strategy_from_toml(%{config_toml: toml} = strategy) do
+    # Extract [strategy] section (everything before [[legs]] or [overall])
+    strategy_block = toml |> String.split(~r/^\[\[legs\]\]|^\[overall\]/m, parts: 2) |> hd()
+
+    %{
+      "name" => strategy.name,
+      "underlying" => strategy.underlying,
+      "instrument_type" => extract_string(strategy_block, "instrument_type", "options"),
+      "capital" => extract_number(strategy_block, "capital", "100000"),
+      "entry_time" => extract_string(strategy_block, "entry_time", "09:20"),
+      "exit_time" => extract_string(strategy_block, "exit_time", "15:15"),
+      "brokerage" => extract_number(strategy_block, "brokerage_per_lot", "40"),
+      "slippage_model" => extract_string(strategy_block, "slippage_model", "fixed_pts"),
+      "slippage_value" => extract_number(strategy_block, "slippage_value", "1.0"),
+      "stt_on_sell" => extract_bool(strategy_block, "stt_on_sell"),
+      "max_concurrent" => extract_number(strategy_block, "max_concurrent", "1"),
+      "overall_sl_enabled" => extract_overall_bool(toml, "overall_sl_enabled"),
+      "overall_sl_type" => extract_overall_string(toml, "overall_sl_type", "percent_of_premium"),
+      "overall_sl_value" => extract_overall_number(toml, "overall_sl_value", "0"),
+      "overall_target_enabled" => extract_overall_bool(toml, "overall_target_enabled"),
+      "overall_target_type" => extract_overall_string(toml, "overall_target_type", "percent_of_premium"),
+      "overall_target_value" => extract_overall_number(toml, "overall_target_value", "0")
+    }
+  end
+
+  defp extract_overall_string(toml, key, default) do
+    case String.split(toml, ~r/^\[overall\]/m, parts: 2) do
+      [_, overall_block] -> extract_string(overall_block, key, default)
+      _ -> default
+    end
+  end
+
+  defp extract_overall_number(toml, key, default) do
+    case String.split(toml, ~r/^\[overall\]/m, parts: 2) do
+      [_, overall_block] -> extract_number(overall_block, key, default)
+      _ -> default
+    end
+  end
+
+  defp extract_overall_bool(toml, key) do
+    case String.split(toml, ~r/^\[overall\]/m, parts: 2) do
+      [_, overall_block] -> extract_bool(overall_block, key)
+      _ -> "false"
+    end
   end
 
   defp default_leg do
