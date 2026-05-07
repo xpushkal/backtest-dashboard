@@ -115,6 +115,10 @@ defmodule QuantEdgeWeb.PortfolioLive do
     end
   end
 
+  def handle_event("switch_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, :active_tab, tab)}
+  end
+
   defp build_portfolio_config(id, strategies, allocations, total_capital, date_from, date_to) do
     %{
       "name" => "Portfolio #{String.slice(id, 0..7)}",
@@ -133,10 +137,6 @@ defmodule QuantEdgeWeb.PortfolioLive do
           }
         end)
     }
-  end
-
-  def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, :active_tab, tab)}
   end
 
   @impl true
