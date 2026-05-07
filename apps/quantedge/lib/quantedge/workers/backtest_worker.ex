@@ -20,13 +20,13 @@ defmodule QuantEdge.Workers.BacktestWorker do
     broadcast(run_id, {:status, :running})
     Logger.info("Backtest started: #{run_id}")
 
-    # 2. Build NIF inputs
+    # 2. Build NIF inputs — lot size comes from historical config keyed on entry date
     opts = Jason.encode!(%{
       symbol: strategy.underlying,
       date_from: Date.to_iso8601(run.date_from),
       date_to: Date.to_iso8601(run.date_to),
       capital: Decimal.to_float(run.capital),
-      lot_size: get_lot_size(strategy.underlying),
+      lot_size: QuantEdge.LotSizes.get(strategy.underlying, run.date_from),
       data_dir: Application.get_env(:quantedge, :data_dir, "Data/parquet")
     })
 
@@ -59,17 +59,20 @@ defmodule QuantEdge.Workers.BacktestWorker do
 
   defp broadcast(run_id, message) do
     Phoenix.PubSub.broadcast(QuantEdge.PubSub, "run:#{run_id}", message)
+    # Also broadcast to the global listing channel
+    case message do
+      {:status, :running} ->
+        Phoenix.PubSub.broadcast(QuantEdge.PubSub, "runs:updates", {:run_started, run_id})
+      {:completed, summary} ->
+        Phoenix.PubSub.broadcast(QuantEdge.PubSub, "runs:updates", {:run_completed, run_id, summary})
+      {:error, reason} ->
+        Phoenix.PubSub.broadcast(QuantEdge.PubSub, "runs:updates", {:run_failed, run_id, reason})
+      _ -> :ok
+    end
   end
 
   defp extract_summary(metrics) when is_map(metrics) do
-    Map.take(metrics, [
-      "total_pnl_net", "cagr", "win_rate_pct", "max_drawdown_pct",
-      "sharpe_ratio", "profit_factor", "total_trades", "premium_capture_pct"
-    ])
+    # Store all metrics from the Rust MetricsResult (44 fields)
+    metrics
   end
-
-  defp get_lot_size("BANKNIFTY"), do: 15
-  defp get_lot_size("NIFTY"), do: 25
-  defp get_lot_size("SENSEX"), do: 10
-  defp get_lot_size(_), do: 1
 end

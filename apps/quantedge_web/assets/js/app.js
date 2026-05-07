@@ -22,7 +22,6 @@ import "phoenix_html"
 // Establish Phoenix Socket and LiveView configuration.
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
-import {hooks as colocatedHooks} from "phoenix-colocated/quantedge_umbrella_web"
 import topbar from "../vendor/topbar"
 
 import {EquityChart} from "./hooks/equity_chart"
@@ -30,7 +29,6 @@ import {MonthlyHeatmap, MonteCarloChart, GreeksChart, WalkForwardChart} from "./
 import OptimizerHeatmap from "./optimizer_heatmap_hook"
 
 const Hooks = {
-  ...colocatedHooks,
   EquityChart,
   MonthlyHeatmap,
   MonteCarloChart,

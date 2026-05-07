@@ -18,7 +18,7 @@ defmodule QuantEdge.NIF do
   def run_backtest(_strategy_toml, _opts_json), do: :erlang.nif_error(:not_loaded)
 
   @doc "Run optimizer grid sweep. Returns {:ok, json} | {:error, reason}."
-  def run_optimizer(_strategy_toml, _param_grid_json), do: :erlang.nif_error(:not_loaded)
+  def run_optimizer(_strategy_toml, _param_grid_json, _opts_json), do: :erlang.nif_error(:not_loaded)
 
   @doc "Run portfolio backtest. Returns {:ok, json} | {:error, reason}."
   def run_portfolio(_strategies_json, _opts_json), do: :erlang.nif_error(:not_loaded)

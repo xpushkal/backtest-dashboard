@@ -74,11 +74,37 @@ defmodule QuantEdgeWeb.PortfolioLive do
     if MapSet.size(socket.assigns.selected) < 2 do
       {:noreply, put_flash(socket, :error, "Select at least 2 strategies")}
     else
+      strategies = selected_strategies(socket.assigns.strategies, socket.assigns.selected)
+
+      # Run each strategy as individual backtests
+      results =
+        Enum.map(strategies, fn s ->
+          alloc_pct = Map.get(socket.assigns.allocations, s.id, 0)
+          capital = round(socket.assigns.total_capital * alloc_pct / 100)
+
+          attrs = %{
+            strategy_id: s.id,
+            date_from: Date.from_iso8601!(socket.assigns.date_from),
+            date_to: Date.from_iso8601!(socket.assigns.date_to),
+            capital: Decimal.new("#{capital}")
+          }
+
+          case QuantEdge.Runs.create_run(attrs) do
+            {:ok, run} ->
+              QuantEdge.Runs.enqueue_backtest(run.id)
+              {:ok, s.name}
+            {:error, _} ->
+              {:error, s.name}
+          end
+        end)
+
+      ok_count = Enum.count(results, &match?({:ok, _}, &1))
+
       {:noreply,
        socket
        |> assign(:running, true)
        |> assign(:progress, 0.0)
-       |> put_flash(:info, "Portfolio backtest started!")}
+       |> put_flash(:info, "#{ok_count} portfolio backtests queued!")}
     end
   end
 

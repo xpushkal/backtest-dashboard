@@ -24,6 +24,7 @@ defmodule QuantEdge.Runs do
         underlying: if(run.strategy, do: run.strategy.underlying, else: nil),
         date_from: run.date_from,
         date_to: run.date_to,
+        capital: run.capital,
         status: run.status,
         result_summary: run.result_summary || %{},
         inserted_at: run.inserted_at

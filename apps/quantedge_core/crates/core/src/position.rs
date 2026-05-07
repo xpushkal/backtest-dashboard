@@ -101,7 +101,10 @@ impl ClosedTrade {
         };
         let quantity = (leg.lots * leg.lot_size) as f64;
         let pnl_gross = (exit_price - leg.entry_price) * direction * quantity;
-        let pnl_net = pnl_gross - brokerage - stt - slippage_cost;
+        // NOTE: slippage_cost is already baked into pnl_gross because the runner
+        // passes slipped entry/exit prices. Stored here for cost-breakdown
+        // reporting only — do NOT subtract again.
+        let pnl_net = pnl_gross - brokerage - stt;
 
         Self {
             entry_date,
@@ -194,7 +197,9 @@ mod tests {
 
     #[test]
     fn test_closed_trade_net_pnl() {
-        let leg = make_test_leg(200.0, PositionSide::Sell);
+        // pnl_net deducts brokerage + stt only — slippage is already
+        // reflected inside pnl_gross by the runner (slipped fills).
+        let _leg = make_test_leg(200.0, PositionSide::Sell);
         let trade = ClosedTrade {
             entry_date: NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
             entry_time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(),
@@ -210,14 +215,14 @@ mod tests {
             lot_size: 15,
             pnl_gross: 750.0,
             brokerage: 80.0,
-            stt: 1.40625,   // 150 * 15 * 0.000625
+            stt: 1.40625,
             slippage_cost: 30.0,
-            pnl_net: 750.0 - 80.0 - 1.40625 - 30.0,
+            pnl_net: 750.0 - 80.0 - 1.40625,
             exit_reason: ExitReason::TimeExit,
             bars_held: 360,
             reentry_attempt: 0,
         };
-        let expected_net = 750.0 - 80.0 - 1.40625 - 30.0;
+        let expected_net = 750.0 - 80.0 - 1.40625;
         assert!((trade.pnl_net - expected_net).abs() < 0.001);
         assert!(trade.pnl_net < trade.pnl_gross);
     }
