@@ -131,7 +131,9 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
   end
 
   def handle_event("update_form", params, socket) do
-    form = build_form(Map.merge(socket.assigns.form.params, Map.drop(params, ["_target"])))
+    # Each strategy-level input sends only its own value — merge just that field
+    updates = Map.drop(params, ["_target", "_csrf_token"])
+    form = build_form(Map.merge(socket.assigns.form.params, updates))
     {:noreply, socket |> assign(:form, form) |> update_toml_preview()}
   end
 
@@ -218,22 +220,22 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
     <div :if={@show_form} class="card">
       <h2 class="mb-6">{if @editing_strategy, do: "Edit Strategy", else: "New Strategy"}</h2>
 
-      <form phx-submit="save_strategy" phx-change="update_form">
+      <form phx-submit="save_strategy">
         <div class="grid-3 mb-6">
           <div class="input-group">
             <label class="input-label">Strategy Name</label>
-            <input type="text" name="name" value={@form.params["name"]} class="input" placeholder="e.g. Short Straddle Nifty" required />
+            <input type="text" name="name" value={@form.params["name"]} class="input" placeholder="e.g. Short Straddle Nifty" required phx-change="update_form" phx-debounce="blur" />
           </div>
           <div class="input-group">
             <label class="input-label">Underlying</label>
-            <select name="underlying" class="input">
+            <select name="underlying" class="input" phx-change="update_form">
               <option value="NIFTY" selected={@form.params["underlying"] != "SENSEX"}>Nifty</option>
               <option value="SENSEX" selected={@form.params["underlying"] == "SENSEX"}>Sensex</option>
             </select>
           </div>
           <div class="input-group">
             <label class="input-label">Instrument Type</label>
-            <select name="instrument_type" class="input">
+            <select name="instrument_type" class="input" phx-change="update_form">
               <option value="options" selected={@form.params["instrument_type"] != "futures"}>Options</option>
               <option value="futures" selected={@form.params["instrument_type"] == "futures"}>Futures</option>
             </select>
@@ -243,43 +245,43 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
         <div class="grid-4 mb-4">
           <div class="input-group">
             <label class="input-label">Capital (₹)</label>
-            <input type="number" name="capital" value={@form.params["capital"]} class="input" phx-debounce="blur" />
+            <input type="number" name="capital" value={@form.params["capital"]} class="input" phx-change="update_form" phx-debounce="blur" />
           </div>
           <div class="input-group">
             <label class="input-label">Entry Time</label>
-            <input type="text" name="entry_time" value={@form.params["entry_time"]} class="input" placeholder="HH:MM" phx-debounce="blur" />
+            <input type="text" name="entry_time" value={@form.params["entry_time"]} class="input" placeholder="HH:MM" phx-change="update_form" phx-debounce="blur" />
           </div>
           <div class="input-group">
             <label class="input-label">Exit Time</label>
-            <input type="text" name="exit_time" value={@form.params["exit_time"]} class="input" placeholder="HH:MM" phx-debounce="blur" />
+            <input type="text" name="exit_time" value={@form.params["exit_time"]} class="input" placeholder="HH:MM" phx-change="update_form" phx-debounce="blur" />
           </div>
           <div class="input-group">
             <label class="input-label">Brokerage/Lot (₹)</label>
-            <input type="number" name="brokerage" value={@form.params["brokerage"]} class="input" phx-debounce="blur" />
+            <input type="number" name="brokerage" value={@form.params["brokerage"]} class="input" phx-change="update_form" phx-debounce="blur" />
           </div>
         </div>
         <div class="grid-4 mb-6">
           <div class="input-group">
             <label class="input-label">Slippage Model</label>
-            <select name="slippage_model" class="input">
+            <select name="slippage_model" class="input" phx-change="update_form">
               <option value="fixed_pts" selected={@form.params["slippage_model"] != "percent"}>Fixed Pts</option>
               <option value="percent" selected={@form.params["slippage_model"] == "percent"}>Percent</option>
             </select>
           </div>
           <div class="input-group">
             <label class="input-label">Slippage Value</label>
-            <input type="number" step="0.1" name="slippage_value" value={@form.params["slippage_value"]} class="input" phx-debounce="blur" />
+            <input type="number" step="0.1" name="slippage_value" value={@form.params["slippage_value"]} class="input" phx-change="update_form" phx-debounce="blur" />
           </div>
           <div class="input-group">
             <label class="input-label">STT on Sell</label>
-            <select name="stt_on_sell" class="input">
+            <select name="stt_on_sell" class="input" phx-change="update_form">
               <option value="true" selected={@form.params["stt_on_sell"] != "false"}>Yes</option>
               <option value="false" selected={@form.params["stt_on_sell"] == "false"}>No</option>
             </select>
           </div>
           <div class="input-group">
             <label class="input-label">Max Concurrent</label>
-            <input type="number" name="max_concurrent" value={@form.params["max_concurrent"]} class="input" phx-debounce="blur" />
+            <input type="number" name="max_concurrent" value={@form.params["max_concurrent"]} class="input" phx-change="update_form" phx-debounce="blur" />
           </div>
         </div>
 
@@ -312,11 +314,11 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
             </div>
             <div class="input-group">
               <label class="input-label">Lots</label>
-              <input type="number" name={"leg_lots_#{idx}"} value={leg["lots"] || "1"} class="input" phx-change="update_leg" phx-value-index={idx} phx-debounce="blur" />
+              <input type="number" name={"leg_lots_#{idx}"} value={leg["lots"] || "1"} class="input" phx-change="update_leg" phx-value-index={idx} />
             </div>
             <div class="input-group">
               <label class="input-label">Strike Offset</label>
-              <input type="number" name={"leg_strike_offset_#{idx}"} value={leg["strike_offset"] || "0"} class="input" phx-change="update_leg" phx-value-index={idx} phx-debounce="blur" />
+              <input type="number" name={"leg_strike_offset_#{idx}"} value={leg["strike_offset"] || "0"} class="input" phx-change="update_leg" phx-value-index={idx} />
             </div>
           </div>
 
@@ -340,11 +342,11 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
             </div>
             <div class="input-group">
               <label class="input-label">SL Value</label>
-              <input type="number" step="0.1" name={"leg_sl_value_#{idx}"} value={leg["sl_value"] || "30"} class="input" phx-change="update_leg" phx-value-index={idx} phx-debounce="blur" />
+              <input type="number" step="0.1" name={"leg_sl_value_#{idx}"} value={leg["sl_value"] || "30"} class="input" phx-change="update_leg" phx-value-index={idx} />
             </div>
             <div class="input-group">
               <label class="input-label">Target Value</label>
-              <input type="number" step="0.1" name={"leg_target_value_#{idx}"} value={leg["target_value"] || ""} class="input" placeholder="Optional" phx-change="update_leg" phx-value-index={idx} phx-debounce="blur" />
+              <input type="number" step="0.1" name={"leg_target_value_#{idx}"} value={leg["target_value"] || ""} class="input" placeholder="Optional" phx-change="update_leg" phx-value-index={idx} />
             </div>
           </div>
 
@@ -359,7 +361,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
             </div>
             <div class="input-group">
               <label class="input-label">Trail Activate At</label>
-              <input type="number" step="0.1" name={"leg_trail_activate_#{idx}"} value={leg["trail_activate"] || "0"} class="input" phx-change="update_leg" phx-value-index={idx} phx-debounce="blur" />
+              <input type="number" step="0.1" name={"leg_trail_activate_#{idx}"} value={leg["trail_activate"] || "0"} class="input" phx-change="update_leg" phx-value-index={idx} />
             </div>
             <div class="input-group">
               <label class="input-label">Re-entry on SL</label>
@@ -370,7 +372,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
             </div>
             <div class="input-group">
               <label class="input-label">Max Re-entries</label>
-              <input type="number" name={"leg_reentry_max_#{idx}"} value={leg["reentry_max"] || "2"} class="input" phx-change="update_leg" phx-value-index={idx} phx-debounce="blur" />
+              <input type="number" name={"leg_reentry_max_#{idx}"} value={leg["reentry_max"] || "2"} class="input" phx-change="update_leg" phx-value-index={idx} />
             </div>
           </div>
         </div>
@@ -381,41 +383,41 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
           <div class="grid-3">
             <div class="input-group">
               <label class="input-label">Overall SL</label>
-              <select name="overall_sl_enabled" class="input">
+              <select name="overall_sl_enabled" class="input" phx-change="update_form">
                 <option value="false" selected={@form.params["overall_sl_enabled"] != "true"}>Disabled</option>
                 <option value="true" selected={@form.params["overall_sl_enabled"] == "true"}>Enabled</option>
               </select>
             </div>
             <div class="input-group">
               <label class="input-label">Overall SL Type</label>
-              <select name="overall_sl_type" class="input">
+              <select name="overall_sl_type" class="input" phx-change="update_form">
                 <option value="percent_of_premium" selected={@form.params["overall_sl_type"] != "points"}>% Premium</option>
                 <option value="points" selected={@form.params["overall_sl_type"] == "points"}>Points</option>
               </select>
             </div>
             <div class="input-group">
               <label class="input-label">Overall SL Value</label>
-              <input type="number" step="0.1" name="overall_sl_value" value={@form.params["overall_sl_value"]} class="input" phx-debounce="blur" />
+              <input type="number" step="0.1" name="overall_sl_value" value={@form.params["overall_sl_value"]} class="input" phx-change="update_form" phx-debounce="blur" />
             </div>
           </div>
           <div class="grid-3 mt-3">
             <div class="input-group">
               <label class="input-label">Overall Target</label>
-              <select name="overall_target_enabled" class="input">
+              <select name="overall_target_enabled" class="input" phx-change="update_form">
                 <option value="false" selected={@form.params["overall_target_enabled"] != "true"}>Disabled</option>
                 <option value="true" selected={@form.params["overall_target_enabled"] == "true"}>Enabled</option>
               </select>
             </div>
             <div class="input-group">
               <label class="input-label">Overall Target Type</label>
-              <select name="overall_target_type" class="input">
+              <select name="overall_target_type" class="input" phx-change="update_form">
                 <option value="percent_of_premium" selected={@form.params["overall_target_type"] != "points"}>% Premium</option>
                 <option value="points" selected={@form.params["overall_target_type"] == "points"}>Points</option>
               </select>
             </div>
             <div class="input-group">
               <label class="input-label">Overall Target Value</label>
-              <input type="number" step="0.1" name="overall_target_value" value={@form.params["overall_target_value"]} class="input" phx-debounce="blur" />
+              <input type="number" step="0.1" name="overall_target_value" value={@form.params["overall_target_value"]} class="input" phx-change="update_form" phx-debounce="blur" />
             </div>
           </div>
         </div>
