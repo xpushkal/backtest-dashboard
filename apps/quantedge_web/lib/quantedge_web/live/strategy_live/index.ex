@@ -190,7 +190,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
     <%!-- Strategy Cards Grid --%>
     <div :if={@strategies != [] and !@show_form} class="grid-3 mb-8">
       <div :for={strategy <- @strategies} class="card" style="cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 25px rgba(0,230,230,0.08)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
-        <a href={"/strategies/#{strategy.id}/edit"} style="text-decoration: none; color: inherit; display: block;">
+        <a href={"/strategies/#{strategy.id}"} style="text-decoration: none; color: inherit; display: block;">
           <div class="flex-between mb-3">
             <h3>{strategy.name}</h3>
             <.underlying_badge underlying={strategy.underlying} />
@@ -203,8 +203,8 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
           </div>
         </a>
         <div class="flex-gap-2">
-          <a href={"/strategies/#{strategy.id}/edit"} class="btn btn-sm btn-secondary">Edit</a>
-          <a href={"/runs"} class="btn btn-sm btn-primary" style="font-size: 0.75rem;">▶ Run</a>
+          <a href={"/strategies/#{strategy.id}"} class="btn btn-sm btn-primary" style="font-size: 0.75rem;">📋 View</a>
+          <a href={"/strategies/#{strategy.id}/edit"} class="btn btn-sm btn-secondary">✏ Edit</a>
           <button class="btn btn-sm btn-danger" phx-click="delete_strategy" phx-value-id={strategy.id}>Delete</button>
         </div>
       </div>
@@ -225,17 +225,23 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
       <h2 class="mb-6">{if @editing_strategy, do: "Edit Strategy", else: "New Strategy"}</h2>
 
       <form phx-submit="save_strategy" phx-change="update_form">
-        <div class="grid-2 mb-6">
+        <div class="grid-3 mb-6">
           <div class="input-group">
             <label class="input-label">Strategy Name</label>
-            <input type="text" name="name" value={@form.params["name"]} class="input" placeholder="e.g. Short Straddle BN" required />
+            <input type="text" name="name" value={@form.params["name"]} class="input" placeholder="e.g. Short Straddle Nifty" required />
           </div>
           <div class="input-group">
             <label class="input-label">Underlying</label>
             <select name="underlying" class="input">
-              <option value="BANKNIFTY" selected={@form.params["underlying"] == "BANKNIFTY"}>BankNifty</option>
-              <option value="NIFTY" selected={@form.params["underlying"] == "NIFTY"}>Nifty</option>
+              <option value="NIFTY" selected={@form.params["underlying"] != "SENSEX"}>Nifty</option>
               <option value="SENSEX" selected={@form.params["underlying"] == "SENSEX"}>Sensex</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label class="input-label">Instrument Type</label>
+            <select name="instrument_type" class="input">
+              <option value="options" selected={@form.params["instrument_type"] != "futures"}>Options</option>
+              <option value="futures" selected={@form.params["instrument_type"] == "futures"}>Futures</option>
             </select>
           </div>
         </div>

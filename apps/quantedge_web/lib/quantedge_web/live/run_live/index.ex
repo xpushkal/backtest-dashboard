@@ -132,10 +132,10 @@ defmodule QuantEdgeWeb.RunLive.Index do
               </div>
             </td>
             <td class="col-number">
-              <span :if={run.result_summary["total_pnl"]} class={"text-mono #{if run.result_summary["total_pnl"] >= 0, do: "text-profit", else: "text-loss"}"}>
-                ₹{round(run.result_summary["total_pnl"])}
+              <span :if={run.result_summary["total_pnl_net"]} class={"text-mono #{if run.result_summary["total_pnl_net"] >= 0, do: "text-profit", else: "text-loss"}"}>
+                ₹{round(run.result_summary["total_pnl_net"])}
               </span>
-              <span :if={!run.result_summary["total_pnl"]} class="text-muted">—</span>
+              <span :if={!run.result_summary["total_pnl_net"]} class="text-muted">—</span>
             </td>
             <td class="col-number text-mono">{run.result_summary["sharpe_ratio"] || "—"}</td>
             <td>
