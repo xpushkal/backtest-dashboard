@@ -71,40 +71,47 @@ defmodule QuantEdgeWeb.PortfolioLive do
   end
 
   def handle_event("run_portfolio", _params, socket) do
-    if MapSet.size(socket.assigns.selected) < 2 do
-      {:noreply, put_flash(socket, :error, "Select at least 2 strategies")}
-    else
-      strategies = selected_strategies(socket.assigns.strategies, socket.assigns.selected)
+    cond do
+      MapSet.size(socket.assigns.selected) < 2 ->
+        {:noreply, put_flash(socket, :error, "Select at least 2 strategies")}
 
-      # Run each strategy as individual backtests
-      results =
-        Enum.map(strategies, fn s ->
-          alloc_pct = Map.get(socket.assigns.allocations, s.id, 0)
-          capital = round(socket.assigns.total_capital * alloc_pct / 100)
+      Float.round(
+        socket.assigns.allocations |> Map.values() |> Enum.sum() |> Kernel.*(1.0),
+        1
+      ) != 100.0 ->
+        {:noreply, put_flash(socket, :error, "Allocations must sum to 100%")}
 
-          attrs = %{
-            strategy_id: s.id,
-            date_from: Date.from_iso8601!(socket.assigns.date_from),
-            date_to: Date.from_iso8601!(socket.assigns.date_to),
-            capital: Decimal.new("#{capital}")
-          }
+      true ->
+        strategies = selected_strategies(socket.assigns.strategies, socket.assigns.selected)
+        portfolio_id = Ecto.UUID.generate()
 
-          case QuantEdge.Runs.create_run(attrs) do
-            {:ok, run} ->
-              QuantEdge.Runs.enqueue_backtest(run.id)
-              {:ok, s.name}
-            {:error, _} ->
-              {:error, s.name}
-          end
-        end)
+        portfolio_config = build_portfolio_config(
+          portfolio_id,
+          strategies,
+          socket.assigns.allocations,
+          socket.assigns.total_capital,
+          socket.assigns.date_from,
+          socket.assigns.date_to
+        )
 
-      ok_count = Enum.count(results, &match?({:ok, _}, &1))
+        json = Jason.encode!(portfolio_config)
 
-      {:noreply,
-       socket
-       |> assign(:running, true)
-       |> assign(:progress, 0.0)
-       |> put_flash(:info, "#{ok_count} portfolio backtests queued!")}
+        case QuantEdge.Runs.enqueue_portfolio(portfolio_id, json) do
+          {:ok, _job} ->
+            if connected?(socket) do
+              Phoenix.PubSub.subscribe(QuantEdge.PubSub, "portfolio:#{portfolio_id}")
+            end
+
+            {:noreply,
+             socket
+             |> assign(:running, true)
+             |> assign(:progress, 0.0)
+             |> assign(:portfolio_id, portfolio_id)
+             |> put_flash(:info, "Portfolio backtest queued (#{length(strategies)} strategies)")}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, "Failed to queue: #{inspect(reason)}")}
+        end
     end
   end
 
@@ -112,21 +119,86 @@ defmodule QuantEdgeWeb.PortfolioLive do
     {:noreply, assign(socket, :active_tab, tab)}
   end
 
-  @impl true
-  def handle_info({:portfolio_progress, _id, pct}, socket) do
-    {:noreply, assign(socket, :progress, pct)}
+  defp build_portfolio_config(id, strategies, allocations, total_capital, date_from, date_to) do
+    %{
+      "name" => "Portfolio #{String.slice(id, 0..7)}",
+      "total_capital" => total_capital * 1.0,
+      "date_from" => date_from,
+      "date_to" => date_to,
+      "data_dir" => Application.get_env(:quantedge, :data_dir, "Data/parquet"),
+      "strategies" =>
+        Enum.map(strategies, fn s ->
+          %{
+            "name" => s.name,
+            "underlying" => s.underlying,
+            "allocation_pct" => Map.get(allocations, s.id, 0.0) * 1.0,
+            "lot_size" => QuantEdge.LotSizes.get(s.underlying, Date.from_iso8601!(date_from)),
+            "toml" => s.config_toml || ""
+          }
+        end)
+    }
   end
 
-  def handle_info({:portfolio_completed, _id, results}, socket) do
+  @impl true
+  def handle_info({:portfolio_started, _id}, socket) do
+    {:noreply, socket |> assign(:running, true) |> assign(:progress, 5.0)}
+  end
+
+  def handle_info({:portfolio_completed, _id, result}, socket) do
+    pm = result["portfolio_metrics"] || %{}
+
+    flat = %{
+      "sharpe" => fmt_pm(pm["sharpe_ratio"]),
+      "total_pnl" => fmt_pm_currency(pm["total_pnl"]),
+      "max_dd" => fmt_pm_pct(pm["max_drawdown_pct"]),
+      "div_benefit" => fmt_pm(pm["diversification_benefit"]),
+      "raw" => result
+    }
+
     {:noreply,
      socket
      |> assign(:running, false)
-     |> assign(:results, results)
+     |> assign(:progress, 100.0)
+     |> assign(:results, flat)
      |> assign(:active_tab, "Results")
      |> put_flash(:info, "Portfolio backtest complete!")}
   end
 
+  def handle_info({:portfolio_failed, _id, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:running, false)
+     |> put_flash(:error, "Portfolio failed: #{reason}")}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp fmt_pm(nil), do: "—"
+  defp fmt_pm(v) when is_number(v) do
+    cond do
+      v != v -> "—"
+      abs(v) > 1.0e308 -> "∞"
+      true -> Float.round(v * 1.0, 2) |> to_string()
+    end
+  end
+  defp fmt_pm(_), do: "—"
+
+  defp fmt_pm_currency(nil), do: "—"
+  defp fmt_pm_currency(v) when is_number(v) do
+    if v != v or abs(v) > 1.0e308 do
+      "—"
+    else
+      sign = if v >= 0, do: "+", else: "-"
+      "#{sign}₹#{abs(round(v))}"
+    end
+  end
+  defp fmt_pm_currency(_), do: "—"
+
+  defp fmt_pm_pct(nil), do: "—"
+  defp fmt_pm_pct(v) when is_number(v) do
+    if v != v or abs(v) > 1.0e308, do: "—", else: "#{Float.round(v * 1.0, 2)}%"
+  end
+  defp fmt_pm_pct(_), do: "—"
 
   @impl true
   def render(assigns) do

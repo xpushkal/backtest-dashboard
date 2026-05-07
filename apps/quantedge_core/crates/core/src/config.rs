@@ -344,6 +344,17 @@ impl StrategyConfig {
                     i + 1
                 ).into());
             }
+            // Lock mode requires a positive lock_in_pct, otherwise the floor is 0%
+            // (i.e. break-even) and any retracement triggers immediately.
+            if leg.trail_sl_enabled
+                && leg.trail_sl_mode == TrailSlMode::Lock
+                && leg.trail_sl_lock_in <= 0.0
+            {
+                return Err(format!(
+                    "Leg {}: trail_sl_mode = 'lock' requires trail_sl_lock_in > 0 (percent of peak PnL to lock).",
+                    i + 1
+                ).into());
+            }
             // SL value must be positive when enabled
             if leg.stop_loss_enabled && leg.stop_loss_value <= 0.0 {
                 return Err(format!(

@@ -18,7 +18,6 @@ defmodule QuantEdge.Duck.Reader do
   )
 
   @equity_columns ~w(run_id date equity drawdown_pct)
-  @metric_columns ~w(metric_name metric_value)
 
   @doc "Get all trades for a run, ordered by trade_id. Returns a list of maps."
   def get_trades(run_id) do

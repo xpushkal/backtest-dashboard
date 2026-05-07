@@ -39,10 +39,12 @@ pub fn is_sl_triggered(sl_type: &SlType, sl_value: f64, ctx: &SlContext) -> bool
         }
 
         SlType::PercentOfMargin => {
-            // Simplified SPAN: max(3 × premium × quantity, factor × spot × quantity × 0.12)
-            // factor = 0.20 default (average across BankNifty/Nifty/Sensex)
+            // Simplified SPAN approximation:
+            //   premium_margin = 3 × premium × quantity (covers buy options)
+            //   span_margin    = 12% × notional         (NSE/BSE index F&O initial margin)
+            // Margin used = max of the two — sells are notional-driven, buys are premium-driven.
             let premium_margin = 3.0 * ctx.entry_price * ctx.quantity;
-            let span_margin = 0.20 * ctx.entry_spot * ctx.quantity * 0.12;
+            let span_margin = 0.12 * ctx.entry_spot * ctx.quantity;
             let margin = premium_margin.max(span_margin);
             let loss_pct = if margin > 0.0 {
                 (-ctx.unrealized_pnl / margin) * 100.0
@@ -141,13 +143,13 @@ mod tests {
     fn test_percent_margin_triggered() {
         // Sell at 200, lots=1, lot_size=15, qty=15
         // Premium margin = 3 × 200 × 15 = 9000
-        // SPAN margin = 0.20 × 48000 × 15 × 0.12 = 17280
-        // Margin = max(9000, 17280) = 17280
+        // SPAN margin    = 0.12 × 48000 × 15 = 86400
+        // Margin = max = 86400
         // PnL = (400-200) * (-1) * 15 = -3000
-        // Loss% = 3000/17280 * 100 = 17.36%
+        // Loss% = 3000/86400 * 100 ≈ 3.47%
         let ctx = make_ctx(200.0, 400.0, -1.0, 48000.0, 48200.0);
-        assert!(is_sl_triggered(&SlType::PercentOfMargin, 15.0, &ctx)); // 17.36% > 15%
-        assert!(!is_sl_triggered(&SlType::PercentOfMargin, 20.0, &ctx)); // 17.36% < 20%
+        assert!(is_sl_triggered(&SlType::PercentOfMargin, 3.0, &ctx)); // 3.47% > 3.0%
+        assert!(!is_sl_triggered(&SlType::PercentOfMargin, 5.0, &ctx)); // 3.47% < 5.0%
     }
 
     #[test]

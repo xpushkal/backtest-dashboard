@@ -7,7 +7,9 @@ defmodule QuantEdge.Runs.OptimizerRun do
   @foreign_key_type :binary_id
 
   schema "optimizer_runs" do
-    field :param_grid, :map
+    # Stored as JSONB. Always a list of param-range maps:
+    #   [%{"name" => "sl_value", "min" => 20, "max" => 50, "step" => 5}, ...]
+    field :param_grid, {:array, :map}
     field :status, :string, default: "pending"
     field :total_combos, :integer
     field :completed_combos, :integer, default: 0
@@ -20,6 +22,14 @@ defmodule QuantEdge.Runs.OptimizerRun do
     |> cast(attrs, [:strategy_id, :param_grid, :status, :total_combos, :completed_combos])
     |> validate_required([:strategy_id, :param_grid])
     |> validate_inclusion(:status, ~w(pending running completed failed))
+    |> validate_change(:param_grid, fn :param_grid, value ->
+      cond do
+        not is_list(value) -> [param_grid: "must be a list"]
+        Enum.empty?(value) -> [param_grid: "cannot be empty"]
+        not Enum.all?(value, &is_map/1) -> [param_grid: "each entry must be a map"]
+        true -> []
+      end
+    end)
     |> foreign_key_constraint(:strategy_id)
   end
 end

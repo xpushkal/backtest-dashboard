@@ -1,10 +1,13 @@
 import Config
 
-# For production, don't forget to configure the url host
-# to something meaningful, Phoenix uses this information
-# when generating URLs.
+# Production-time settings. Runtime configuration that depends on
+# environment variables (DATABASE_URL, SECRET_KEY_BASE, etc.) lives
+# in `config/runtime.exs`.
 
-config :quantedge, QuantEdge.Repo,
-  # ssl: true,
-  url: {:system, "DATABASE_URL"},
-  pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
+# Logger: drop debug noise in prod
+config :logger, level: :info
+
+# Phoenix endpoint defaults — runtime.exs overrides host/port/secret.
+config :quantedge_web, QuantEdgeWeb.Endpoint,
+  cache_static_manifest: "priv/static/cache_manifest.json",
+  server: true
