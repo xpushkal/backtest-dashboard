@@ -203,7 +203,7 @@ fn generate_synthetic_bars(n_days: u32) -> Vec<SimBar> {
             time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(),
             option_type: "CE".to_string(),
             strike_offset: 0,
-            close: base_premium,
+            close: base_premium, high: base_premium, low: base_premium,
             spot,
         });
 
@@ -217,7 +217,7 @@ fn generate_synthetic_bars(n_days: u32) -> Vec<SimBar> {
             time: NaiveTime::from_hms_opt(11, 0, 0).unwrap(),
             option_type: "CE".to_string(),
             strike_offset: 0,
-            close: mid_price,
+            close: mid_price, high: mid_price, low: mid_price,
             spot: spot + (mid_rand - 0.5) * 200.0,
         });
 
@@ -231,7 +231,7 @@ fn generate_synthetic_bars(n_days: u32) -> Vec<SimBar> {
             time: NaiveTime::from_hms_opt(13, 0, 0).unwrap(),
             option_type: "CE".to_string(),
             strike_offset: 0,
-            close: noon_price,
+            close: noon_price, high: noon_price, low: noon_price,
             spot: spot + (noon_rand - 0.5) * 300.0,
         });
 
@@ -245,7 +245,7 @@ fn generate_synthetic_bars(n_days: u32) -> Vec<SimBar> {
             time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(),
             option_type: "CE".to_string(),
             strike_offset: 0,
-            close: exit_price,
+            close: exit_price, high: exit_price, low: exit_price,
             spot: spot + (exit_rand - 0.5) * 400.0,
         });
     }

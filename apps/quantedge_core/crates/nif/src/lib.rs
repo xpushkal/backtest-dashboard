@@ -41,8 +41,12 @@ struct TradeJson {
     pnl_gross: f64,
     pnl_net: f64,
     brokerage: f64,
+    stt: f64,
+    slippage_cost: f64,
+    other_charges: f64,
     exit_reason: String,
     bars_held: u32,
+    reentry_attempt: u32,
 }
 
 /// Equity point JSON output.
@@ -98,6 +102,8 @@ fn run_backtest(strategy_toml: String, opts_json: String) -> Result<String, Stri
             option_type: b.option_type.clone(),
             strike_offset: b.strike_offset,
             close: b.close,
+            high: b.high,
+            low: b.low,
             spot: b.spot,
         })
         .collect();
@@ -136,8 +142,12 @@ fn run_backtest(strategy_toml: String, opts_json: String) -> Result<String, Stri
             pnl_gross: t.pnl_gross,
             pnl_net: t.pnl_net,
             brokerage: t.brokerage,
+            stt: t.stt,
+            slippage_cost: t.slippage_cost,
+            other_charges: t.other_charges,
             exit_reason: format!("{:?}", t.exit_reason),
             bars_held: t.bars_held,
+            reentry_attempt: t.reentry_attempt,
         })
         .collect();
 
@@ -224,6 +234,8 @@ fn run_optimizer(
             option_type: b.option_type.clone(),
             strike_offset: b.strike_offset,
             close: b.close,
+            high: b.high,
+            low: b.low,
             spot: b.spot,
         })
         .collect();
@@ -298,6 +310,8 @@ fn run_portfolio(portfolio_json: String, _opts_json: String) -> Result<String, S
                 option_type: b.option_type.clone(),
                 strike_offset: b.strike_offset,
                 close: b.close,
+                high: b.high,
+                low: b.low,
                 spot: b.spot,
             })
             .collect();

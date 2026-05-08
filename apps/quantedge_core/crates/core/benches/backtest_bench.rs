@@ -69,7 +69,7 @@ fn generate_bench_bars(n_days: u32) -> Vec<SimBar> {
                 time: t,
                 option_type: "CE".to_string(),
                 strike_offset: 0,
-                close: base * factor,
+                close: base * factor, high: base * factor, low: base * factor,
                 spot: spot + (i as f64 - 4.0) * 30.0,
             });
         }
@@ -186,7 +186,7 @@ fn generate_straddle_bars(n_days: u32) -> Vec<SimBar> {
                 time: t,
                 option_type: "CE".to_string(),
                 strike_offset: 0,
-                close: ce_base * ce_factor,
+                close: ce_base * ce_factor, high: ce_base * ce_factor, low: ce_base * ce_factor,
                 spot: s,
             });
             bars.push(SimBar {
@@ -194,7 +194,7 @@ fn generate_straddle_bars(n_days: u32) -> Vec<SimBar> {
                 time: t,
                 option_type: "PE".to_string(),
                 strike_offset: 0,
-                close: pe_base * pe_factor,
+                close: pe_base * pe_factor, high: pe_base * pe_factor, low: pe_base * pe_factor,
                 spot: s,
             });
         }
@@ -349,7 +349,7 @@ fn generate_iron_condor_bars(n_days: u32) -> Vec<SimBar> {
             bars.push(SimBar {
                 date, time: t,
                 option_type: "CE".to_string(), strike_offset: 0,
-                close: ce_0, spot: s,
+                close: ce_0, high: ce_0, low: ce_0, spot: s,
             });
 
             // PE ATM (offset 0)
@@ -358,21 +358,21 @@ fn generate_iron_condor_bars(n_days: u32) -> Vec<SimBar> {
             bars.push(SimBar {
                 date, time: t,
                 option_type: "PE".to_string(), strike_offset: 0,
-                close: pe_0, spot: s,
+                close: pe_0, high: pe_0, low: pe_0, spot: s,
             });
 
             // CE OTM (offset +2)
             bars.push(SimBar {
                 date, time: t,
                 option_type: "CE".to_string(), strike_offset: 2,
-                close: ce_0 * 0.3, spot: s,
+                close: ce_0 * 0.3, high: ce_0 * 0.3, low: ce_0 * 0.3, spot: s,
             });
 
             // PE OTM (offset -2)
             bars.push(SimBar {
                 date, time: t,
                 option_type: "PE".to_string(), strike_offset: -2,
-                close: pe_0 * 0.3, spot: s,
+                close: pe_0 * 0.3, high: pe_0 * 0.3, low: pe_0 * 0.3, spot: s,
             });
         }
     }

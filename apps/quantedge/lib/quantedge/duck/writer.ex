@@ -78,7 +78,7 @@ defmodule QuantEdge.Duck.Writer do
   def handle_call({:insert_trades, run_id, trades}, _from, state) do
     cols = ~w(run_id trade_id entry_date exit_date entry_time exit_time
               option_type position_side entry_price exit_price entry_spot exit_spot
-              lots lot_size pnl_gross pnl_net brokerage stt slippage_cost
+              lots lot_size pnl_gross pnl_net brokerage stt slippage_cost other_charges
               exit_reason bars_held reentry_attempt)
     col_count = length(cols)
 
@@ -105,6 +105,7 @@ defmodule QuantEdge.Duck.Writer do
           safe_num(t["brokerage"]),
           safe_num(t["stt"]),
           safe_num(t["slippage_cost"]),
+          safe_num(t["other_charges"]),
           to_string(t["exit_reason"] || ""),
           safe_int(t["bars_held"]),
           safe_int(t["reentry_attempt"])
@@ -270,11 +271,13 @@ defmodule QuantEdge.Duck.Writer do
         brokerage       DOUBLE,
         stt             DOUBLE,
         slippage_cost   DOUBLE,
+        other_charges   DOUBLE,
         exit_reason     VARCHAR,
         bars_held       INTEGER,
         reentry_attempt INTEGER
       )
       """,
+      "ALTER TABLE trades ADD COLUMN IF NOT EXISTS other_charges DOUBLE",
       """
       CREATE TABLE IF NOT EXISTS equity_curves (
         run_id        VARCHAR,

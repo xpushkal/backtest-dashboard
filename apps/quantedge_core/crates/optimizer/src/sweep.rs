@@ -205,7 +205,7 @@ overall_sl_enabled = false
                     time: t,
                     option_type: "CE".to_string(),
                     strike_offset: 0,
-                    close: base * factor,
+                    close: base * factor, high: base * factor, low: base * factor,
                     spot: spot + (i as f64 - 1.0) * 30.0,
                 });
             }

@@ -22,6 +22,10 @@ pub struct RunResult {
 
 /// A single bar row with the fields needed by the simulation.
 /// This is a lightweight view — the runner doesn't depend on the data crate's Bar.
+///
+/// `high` and `low` carry intrabar extremes so SL/Target can be detected
+/// even when the close didn't breach the threshold (a real-life SL still fires
+/// when the bar's high/low touches it intrabar).
 #[derive(Debug, Clone)]
 pub struct SimBar {
     pub date: NaiveDate,
@@ -29,6 +33,8 @@ pub struct SimBar {
     pub option_type: String,
     pub strike_offset: i32,
     pub close: f64,
+    pub high: f64,
+    pub low: f64,
     pub spot: f64,
 }
 
@@ -240,7 +246,8 @@ impl SimRunner {
                 if bars[idx].option_type == target_type
                     && bars[idx].strike_offset == leg.config.strike_offset
                 {
-                    leg.update(bars[idx].close, bars[idx].spot);
+                    let b = &bars[idx];
+                    leg.update_full(b.close, b.high, b.low, b.spot);
                     break;
                 }
             }
@@ -329,6 +336,16 @@ impl SimRunner {
                 }
             }
 
+            // For per-leg SL/Target exits, override with the intrabar fill price
+            // so a wick-triggered SL fills at the worst (high for shorts, low for
+            // longs) rather than the bar close that recovered. Combined exits and
+            // time/end-of-data exits still use the close.
+            exit_price = match reason {
+                ExitReason::StopLoss => leg.sl_fill_price(),
+                ExitReason::Target => leg.target_fill_price(),
+                _ => exit_price,
+            };
+
             // Apply exit slippage (opposite direction)
             let exit_side = match leg.config.position {
                 PositionSide::Buy => PositionSide::Sell,
@@ -366,6 +383,17 @@ impl SimRunner {
                 lot_size,
             );
 
+            // Indian regulatory + exchange charges (NSE exchange, SEBI, stamp, GST).
+            // Computed on the slipped fills (what we actually pay/receive).
+            let quantity = (leg.lots * lot_size) as f64;
+            let other_charges = ExecutionEngine::calculate_indian_charges(
+                leg.entry_price,
+                slipped_exit,
+                quantity,
+                brokerage,
+                leg.config.position,
+            );
+
             let trade = ClosedTrade::from_leg(
                 leg,
                 pos.entry_date,
@@ -378,6 +406,7 @@ impl SimRunner {
                 brokerage,
                 stt,
                 slippage_cost,
+                other_charges,
                 reentry_attempt,
             );
             trades.push(trade);
@@ -436,7 +465,7 @@ overall_sl_enabled = false
             time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(),
             option_type: "CE".to_string(),
             strike_offset: 0,
-            close: entry_close,
+            close: entry_close, high: entry_close, low: entry_close,
             spot,
         });
 
@@ -448,7 +477,7 @@ overall_sl_enabled = false
                 time: NaiveTime::from_hms_opt(11, 0, 0).unwrap(),
                 option_type: "CE".to_string(),
                 strike_offset: 0,
-                close: sl_price,
+                close: sl_price, high: sl_price, low: sl_price,
                 spot: spot + 200.0,
             });
         } else {
@@ -459,7 +488,7 @@ overall_sl_enabled = false
                 time: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
                 option_type: "CE".to_string(),
                 strike_offset: 0,
-                close: mid,
+                close: mid, high: mid, low: mid,
                 spot,
             });
         }
@@ -470,7 +499,7 @@ overall_sl_enabled = false
             time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(),
             option_type: "CE".to_string(),
             strike_offset: 0,
-            close: exit_close,
+            close: exit_close, high: exit_close, low: exit_close,
             spot: spot - 50.0,
         });
 
@@ -522,7 +551,7 @@ overall_sl_enabled = false
             time: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
             option_type: "CE".to_string(),
             strike_offset: 0,
-            close: 200.0,
+            close: 200.0, high: 200.0, low: 200.0,
             spot: 48000.0,
         }];
         let result = SimRunner::run(&config, &bars, 15);
@@ -579,7 +608,7 @@ overall_sl_enabled = false
                 time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(),
                 option_type: "CE".to_string(),
                 strike_offset: 0,
-                close: 200.0,
+                close: 200.0, high: 200.0, low: 200.0,
                 spot: 48000.0,
             },
             SimBar {
@@ -587,7 +616,7 @@ overall_sl_enabled = false
                 time: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
                 option_type: "CE".to_string(),
                 strike_offset: 0,
-                close: 190.0,
+                close: 190.0, high: 190.0, low: 190.0,
                 spot: 47950.0,
             },
         ];
@@ -652,14 +681,14 @@ overall_target_value = 50.0
         let spot = 48000.0;
         vec![
             // Entry
-            SimBar { date, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: ce_entry, spot },
-            SimBar { date, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(), option_type: "PE".to_string(), strike_offset: 0, close: pe_entry, spot },
+            SimBar { date, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: ce_entry, high: ce_entry, low: ce_entry, spot },
+            SimBar { date, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(), option_type: "PE".to_string(), strike_offset: 0, close: pe_entry, high: pe_entry, low: pe_entry, spot },
             // Mid-day
-            SimBar { date, time: NaiveTime::from_hms_opt(12, 0, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: ce_mid, spot: spot + 100.0 },
-            SimBar { date, time: NaiveTime::from_hms_opt(12, 0, 0).unwrap(), option_type: "PE".to_string(), strike_offset: 0, close: pe_mid, spot: spot + 100.0 },
+            SimBar { date, time: NaiveTime::from_hms_opt(12, 0, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: ce_mid, high: ce_mid, low: ce_mid, spot: spot + 100.0 },
+            SimBar { date, time: NaiveTime::from_hms_opt(12, 0, 0).unwrap(), option_type: "PE".to_string(), strike_offset: 0, close: pe_mid, high: pe_mid, low: pe_mid, spot: spot + 100.0 },
             // Exit
-            SimBar { date, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: ce_exit, spot: spot - 50.0 },
-            SimBar { date, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(), option_type: "PE".to_string(), strike_offset: 0, close: pe_exit, spot: spot - 50.0 },
+            SimBar { date, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: ce_exit, high: ce_exit, low: ce_exit, spot: spot - 50.0 },
+            SimBar { date, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(), option_type: "PE".to_string(), strike_offset: 0, close: pe_exit, high: pe_exit, low: pe_exit, spot: spot - 50.0 },
         ]
     }
 
@@ -739,9 +768,9 @@ target_profit_value = 10.0
         // Entry at 200, mid at 280 → SL fires (80pt move > 50pt), but also target would fire
         // SL has priority → StopLoss
         let bars = vec![
-            SimBar { date, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: 200.0, spot: 48000.0 },
-            SimBar { date, time: NaiveTime::from_hms_opt(12, 0, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: 280.0, spot: 48280.0 },
-            SimBar { date, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: 260.0, spot: 48260.0 },
+            SimBar { date, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: 200.0, high: 200.0, low: 200.0, spot: 48000.0 },
+            SimBar { date, time: NaiveTime::from_hms_opt(12, 0, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: 280.0, high: 280.0, low: 280.0, spot: 48280.0 },
+            SimBar { date, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(), option_type: "CE".to_string(), strike_offset: 0, close: 260.0, high: 260.0, low: 260.0, spot: 48260.0 },
         ];
         let result = SimRunner::run(&config, &bars, 15);
         assert_eq!(result.trades[0].exit_reason, ExitReason::StopLoss);
@@ -815,16 +844,16 @@ reentry_cooldown_bars = 0
 
         // Entry at 09:20, price=200
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 200.0, spot: 48000.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 200.0, high: 200.0, low: 200.0, spot: 48000.0 });
         // SL trigger at 11:00: price=310 → 55% loss > 50% SL
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(11, 0, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 310.0, spot: 48200.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 310.0, high: 310.0, low: 310.0, spot: 48200.0 });
         // After re-entry, bar at 13:00
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(13, 0, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 280.0, spot: 48100.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 280.0, high: 280.0, low: 280.0, spot: 48100.0 });
         // Exit at 15:20
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 250.0, spot: 48050.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 250.0, high: 250.0, low: 250.0, spot: 48050.0 });
 
         let config = StrategyConfig::from_toml_str(REENTRY_TOML_ASAP).unwrap();
         let result = SimRunner::run(&config, &bars, 15);
@@ -857,19 +886,19 @@ reentry_cooldown_bars = 0
 
         // Entry at 09:20 → SL at 10:00 → re-entry → SL at 11:00 → re-entry → SL at 12:00 → exhausted
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 200.0, spot: 48000.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 200.0, high: 200.0, low: 200.0, spot: 48000.0 });
         // SL #1 at 10:00
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 310.0, spot: 48200.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 310.0, high: 310.0, low: 310.0, spot: 48200.0 });
         // Re-entry #1 opens at 10:00 (ASAP), SL #2 at 11:00
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(11, 0, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 480.0, spot: 48400.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 480.0, high: 480.0, low: 480.0, spot: 48400.0 });
         // Re-entry #2 opens at 11:00 (ASAP), SL #3 at 12:00
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 730.0, spot: 48600.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 730.0, high: 730.0, low: 730.0, spot: 48600.0 });
         // No more re-entry (exhausted), bar at 15:20
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 600.0, spot: 48500.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 600.0, high: 600.0, low: 600.0, spot: 48500.0 });
 
         let config = StrategyConfig::from_toml_str(REENTRY_TOML_ASAP).unwrap();
         let result = SimRunner::run(&config, &bars, 15);
@@ -915,22 +944,22 @@ reentry_max_attempts = 1
 
         // Entry at 09:20
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 200.0, spot: 48000.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 200.0, high: 200.0, low: 200.0, spot: 48000.0 });
         // SL at 10:00
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 310.0, spot: 48200.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 310.0, high: 310.0, low: 310.0, spot: 48200.0 });
         // Cooldown bar 1 at 10:30
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(10, 30, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 290.0, spot: 48150.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 290.0, high: 290.0, low: 290.0, spot: 48150.0 });
         // Cooldown bar 2 at 11:00 → ready
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(11, 0, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 280.0, spot: 48100.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 280.0, high: 280.0, low: 280.0, spot: 48100.0 });
         // Re-entry opens at 11:30
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(11, 30, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 270.0, spot: 48080.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 270.0, high: 270.0, low: 270.0, spot: 48080.0 });
         // Exit at 15:20
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 250.0, spot: 48050.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 250.0, high: 250.0, low: 250.0, spot: 48050.0 });
 
         let config = StrategyConfig::from_toml_str(toml).unwrap();
         let result = SimRunner::run(&config, &bars, 15);
@@ -976,16 +1005,16 @@ reentry_cooldown_bars = 0
 
         // Entry at 09:20, price=200
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(9, 20, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 200.0, spot: 48000.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 200.0, high: 200.0, low: 200.0, spot: 48000.0 });
         // Target hit at 11:00: 200→135 = 32.5% profit for sell → exceeds 30%
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(11, 0, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 135.0, spot: 47800.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 135.0, high: 135.0, low: 135.0, spot: 47800.0 });
         // After re-entry at 13:00
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(13, 0, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 120.0, spot: 47700.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 120.0, high: 120.0, low: 120.0, spot: 47700.0 });
         // Exit at 15:20
         bars.push(SimBar { date: d1, time: NaiveTime::from_hms_opt(15, 20, 0).unwrap(),
-            option_type: "CE".to_string(), strike_offset: 0, close: 100.0, spot: 47600.0 });
+            option_type: "CE".to_string(), strike_offset: 0, close: 100.0, high: 100.0, low: 100.0, spot: 47600.0 });
 
         let config = StrategyConfig::from_toml_str(toml).unwrap();
         let result = SimRunner::run(&config, &bars, 15);
