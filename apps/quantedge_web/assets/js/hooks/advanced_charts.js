@@ -4,6 +4,7 @@
 const MonthlyHeatmap = {
   mounted() {
     this.handleEvent("heatmap_data", (data) => this.renderHeatmap(data))
+    this.pushEvent("request_chart_data", {chart: "heatmap"})
   },
 
   renderHeatmap(data) {
@@ -76,6 +77,7 @@ const MonteCarloChart = {
   mounted() {
     this.chart = null
     this.handleEvent("montecarlo_data", (data) => this.renderChart(data))
+    this.pushEvent("request_chart_data", {chart: "montecarlo"})
   },
 
   async renderChart(data) {
@@ -182,6 +184,7 @@ const GreeksChart = {
   mounted() {
     this.chart = null
     this.handleEvent("greeks_data", (data) => this.renderChart(data))
+    this.pushEvent("request_chart_data", {chart: "greeks"})
   },
 
   async renderChart(data) {
@@ -338,6 +341,108 @@ const WalkForwardChart = {
   }
 }
 
+/**
+ * DailyPnLChart Hook — bar chart of daily PnL
+ */
+const DailyPnLChart = {
+  mounted() {
+    this.chart = null
+    this.handleEvent("daily_pnl_data", (data) => this.renderChart(data))
+    this.pushEvent("request_chart_data", {chart: "daily_pnl"})
+  },
+  async renderChart(data) {
+    if (!window.Chart) await loadChartJS()
+    const canvas = this.el.querySelector("canvas")
+    if (!canvas) return
+    if (this.chart) this.chart.destroy()
+    const ctx = canvas.getContext("2d")
+    const colors = (data.pnl || []).map(v => v >= 0 ? "rgba(0,230,118,0.7)" : "rgba(255,61,61,0.7)")
+    this.chart = new Chart(ctx, {
+      type: "bar",
+      data: { labels: data.labels, datasets: [{ label: "Daily PnL", data: data.pnl, backgroundColor: colors, borderWidth: 0 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#5a5e73", maxTicksLimit: 12 }, grid: { display: false } },
+          y: { ticks: { color: "#8b8fa3", callback: v => `₹${(v/1000).toFixed(0)}K` }, grid: { color: "rgba(30,30,46,0.5)" } }
+        }
+      }
+    })
+  },
+  destroyed() { if (this.chart) this.chart.destroy() }
+}
+
+/**
+ * DrawdownChart Hook — area chart of drawdown over time
+ */
+const DrawdownChart = {
+  mounted() {
+    this.chart = null
+    this.handleEvent("drawdown_data", (data) => this.renderChart(data))
+    this.pushEvent("request_chart_data", {chart: "drawdown"})
+  },
+  async renderChart(data) {
+    if (!window.Chart) await loadChartJS()
+    const canvas = this.el.querySelector("canvas")
+    if (!canvas) return
+    if (this.chart) this.chart.destroy()
+    const ctx = canvas.getContext("2d")
+    this.chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: data.labels,
+        datasets: [{
+          label: "Drawdown %", data: data.drawdown,
+          borderColor: "#ff3d3d", backgroundColor: "rgba(255,61,61,0.15)",
+          borderWidth: 1.5, fill: true, pointRadius: 0, tension: 0.2
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: "#8b8fa3" } } },
+        scales: {
+          x: { ticks: { color: "#5a5e73", maxTicksLimit: 12 }, grid: { color: "rgba(30,30,46,0.3)" } },
+          y: { ticks: { color: "#8b8fa3", callback: v => `${v.toFixed(1)}%` }, grid: { color: "rgba(30,30,46,0.5)" } }
+        }
+      }
+    })
+  },
+  destroyed() { if (this.chart) this.chart.destroy() }
+}
+
+/**
+ * ReturnsHistogram Hook — histogram of trade PnL distribution
+ */
+const ReturnsHistogram = {
+  mounted() {
+    this.chart = null
+    this.handleEvent("histogram_data", (data) => this.renderChart(data))
+    this.pushEvent("request_chart_data", {chart: "histogram"})
+  },
+  async renderChart(data) {
+    if (!window.Chart) await loadChartJS()
+    const canvas = this.el.querySelector("canvas")
+    if (!canvas) return
+    if (this.chart) this.chart.destroy()
+    const ctx = canvas.getContext("2d")
+    const colors = (data.labels || []).map(l => parseFloat(l) >= 0 ? "rgba(0,230,118,0.7)" : "rgba(255,61,61,0.7)")
+    this.chart = new Chart(ctx, {
+      type: "bar",
+      data: { labels: data.labels, datasets: [{ label: "Trade Count", data: data.counts, backgroundColor: colors, borderWidth: 0 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#5a5e73", maxTicksLimit: 10 }, grid: { display: false } },
+          y: { ticks: { color: "#8b8fa3" }, grid: { color: "rgba(30,30,46,0.5)" } }
+        }
+      }
+    })
+  },
+  destroyed() { if (this.chart) this.chart.destroy() }
+}
+
 // Shared Chart.js loader
 function loadChartJS() {
   return new Promise((resolve, reject) => {
@@ -350,4 +455,4 @@ function loadChartJS() {
   })
 }
 
-export { MonthlyHeatmap, MonteCarloChart, GreeksChart, WalkForwardChart }
+export { MonthlyHeatmap, MonteCarloChart, GreeksChart, WalkForwardChart, DailyPnLChart, DrawdownChart, ReturnsHistogram }

@@ -6,6 +6,7 @@ const EquityChart = {
   mounted() {
     this.chart = null
     this.handleEvent("equity_data", (data) => this.renderChart(data))
+    this.pushEvent("request_chart_data", {chart: "equity"})
   },
 
   async renderChart(data) {

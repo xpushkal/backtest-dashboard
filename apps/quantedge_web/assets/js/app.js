@@ -25,7 +25,7 @@ import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 
 import {EquityChart} from "./hooks/equity_chart"
-import {MonthlyHeatmap, MonteCarloChart, GreeksChart, WalkForwardChart} from "./hooks/advanced_charts"
+import {MonthlyHeatmap, MonteCarloChart, GreeksChart, WalkForwardChart, DailyPnLChart, DrawdownChart, ReturnsHistogram} from "./hooks/advanced_charts"
 import OptimizerHeatmap from "./optimizer_heatmap_hook"
 
 const Hooks = {
@@ -34,6 +34,9 @@ const Hooks = {
   MonteCarloChart,
   GreeksChart,
   WalkForwardChart,
+  DailyPnLChart,
+  DrawdownChart,
+  ReturnsHistogram,
   OptimizerHeatmap,
 }
 

@@ -4,12 +4,19 @@ defmodule QuantEdgeWeb.RunLive.Show do
 
   import QuantEdgeWeb.UiComponents
 
+  require Logger
+
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     run = safe_get_run(id)
     metrics = safe_get_metrics(id)
     trades = safe_get_trades(id)
     equity = safe_get_equity(id)
+
+    Logger.info(
+      "RunLive.Show mount run_id=#{inspect(id)} status=#{inspect(Map.get(run, :status))} " <>
+        "metrics=#{map_size(metrics)} trades=#{length(trades)} equity=#{length(equity)}"
+    )
 
     {:ok,
      socket
@@ -28,6 +35,10 @@ defmodule QuantEdgeWeb.RunLive.Show do
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
     {:noreply, assign(socket, :active_tab, tab)}
+  end
+
+  def handle_event("request_chart_data", %{"chart" => chart}, socket) do
+    {:noreply, push_chart(socket, chart)}
   end
 
   def handle_event("next_page", _params, socket) do
@@ -138,23 +149,39 @@ defmodule QuantEdgeWeb.RunLive.Show do
         <thead>
           <tr>
             <th>#</th>
-            <th>Entry Time</th>
-            <th>Exit Time</th>
+            <th>Entry</th>
+            <th>Exit</th>
+            <th>Side</th>
+            <th>Type</th>
+            <th class="col-number">Entry Px</th>
+            <th class="col-number">Exit Px</th>
+            <th class="col-number">Entry Spot</th>
+            <th class="col-number">Exit Spot</th>
+            <th class="col-number">Lots</th>
             <th>Exit Reason</th>
             <th class="col-number">PnL Gross</th>
+            <th class="col-number">Costs</th>
             <th class="col-number">PnL Net</th>
-            <th class="col-number">Bars Held</th>
+            <th class="col-number">Bars</th>
           </tr>
         </thead>
         <tbody>
           <tr :for={{trade, idx} <- paged_trades(@trades, @trade_page)}>
             <td class="text-muted">{idx + 1 + @trade_page * 50}</td>
-            <td class="text-sm">{trade["entry_time"] || "—"}</td>
-            <td class="text-sm">{trade["exit_time"] || "—"}</td>
+            <td class="text-sm">{trade["entry_time"] || trade["entry_date"] || "—"}</td>
+            <td class="text-sm">{trade["exit_time"] || trade["exit_date"] || "—"}</td>
+            <td><span class="badge badge-info">{trade["position_side"] || "—"}</span></td>
+            <td class="text-mono">{trade["option_type"] || "—"}</td>
+            <td class="col-number text-mono">{fmt_num(trade["entry_price"])}</td>
+            <td class="col-number text-mono">{fmt_num(trade["exit_price"])}</td>
+            <td class="col-number text-mono">{fmt_num(trade["entry_spot"])}</td>
+            <td class="col-number text-mono">{fmt_num(trade["exit_spot"])}</td>
+            <td class="col-number text-mono">{trade["lots"] || "—"}</td>
             <td><span class="badge badge-info">{trade["exit_reason"] || "—"}</span></td>
             <td class={"col-number text-mono #{pnl_class(trade["pnl_gross"])}"}>
               {fmt_trade_pnl(trade["pnl_gross"])}
             </td>
+            <td class="col-number text-mono text-muted">{fmt_trade_pnl(trade_costs(trade))}</td>
             <td class={"col-number text-mono #{pnl_class(trade["pnl_net"])}"}>
               {fmt_trade_pnl(trade["pnl_net"])}
             </td>
@@ -191,15 +218,35 @@ defmodule QuantEdgeWeb.RunLive.Show do
       </div>
     </div>
 
-    <%!-- Analytics Tab (07-06) --%>
+    <%!-- Analytics Tab --%>
     <div :if={@active_tab == "Analytics"}>
       <%!-- Monthly PnL Heatmap --%>
       <div class="card mb-8">
         <div class="card-header">
           <span class="card-title">Monthly PnL Heatmap</span>
         </div>
-        <div id="monthly-heatmap" phx-hook="MonthlyHeatmap" style="min-height: 200px;">
+        <div id="monthly-heatmap" phx-hook="MonthlyHeatmap" phx-update="ignore" style="min-height: 200px;">
           <p class="text-center text-muted" style="padding: 2rem;">Loading heatmap data...</p>
+        </div>
+      </div>
+
+      <%!-- Daily PnL Distribution --%>
+      <div class="card mb-8">
+        <div class="card-header">
+          <span class="card-title">Daily PnL Distribution</span>
+        </div>
+        <div id="daily-pnl-chart" phx-hook="DailyPnLChart" phx-update="ignore" style="height: 300px; position: relative;">
+          <canvas></canvas>
+        </div>
+      </div>
+
+      <%!-- Drawdown Curve --%>
+      <div class="card mb-8">
+        <div class="card-header">
+          <span class="card-title">Drawdown Curve</span>
+        </div>
+        <div id="drawdown-chart" phx-hook="DrawdownChart" phx-update="ignore" style="height: 280px; position: relative;">
+          <canvas></canvas>
         </div>
       </div>
 
@@ -207,30 +254,30 @@ defmodule QuantEdgeWeb.RunLive.Show do
         <%!-- Monte Carlo Confidence Bands --%>
         <div class="card">
           <div class="card-header">
-            <span class="card-title">Monte Carlo Simulation</span>
+            <span class="card-title">Monte Carlo Simulation (1000 paths)</span>
           </div>
-          <div id="montecarlo-chart" phx-hook="MonteCarloChart" style="height: 320px; position: relative;">
+          <div id="montecarlo-chart" phx-hook="MonteCarloChart" phx-update="ignore" style="height: 320px; position: relative;">
             <canvas></canvas>
           </div>
         </div>
 
-        <%!-- Greeks Attribution --%>
+        <%!-- Returns Histogram --%>
         <div class="card">
           <div class="card-header">
-            <span class="card-title">Greeks Attribution</span>
+            <span class="card-title">Trade PnL Distribution</span>
           </div>
-          <div id="greeks-chart" phx-hook="GreeksChart" style="height: 320px; position: relative;">
+          <div id="returns-histogram" phx-hook="ReturnsHistogram" phx-update="ignore" style="height: 320px; position: relative;">
             <canvas></canvas>
           </div>
         </div>
       </div>
 
-      <%!-- Walk-Forward Analysis --%>
-      <div class="card mb-8">
+      <%!-- Greeks Attribution (only if options data exists) --%>
+      <div :if={has_greeks?(@metrics)} class="card mb-8">
         <div class="card-header">
-          <span class="card-title">Walk-Forward Analysis</span>
+          <span class="card-title">Greeks PnL Attribution</span>
         </div>
-        <div id="walkforward-chart" phx-hook="WalkForwardChart" style="height: 300px; position: relative;">
+        <div id="greeks-chart" phx-hook="GreeksChart" phx-update="ignore" style="height: 320px; position: relative;">
           <canvas></canvas>
         </div>
       </div>
@@ -248,6 +295,187 @@ defmodule QuantEdgeWeb.RunLive.Show do
       drawdown: Enum.map(equity, & &1["drawdown_pct"])
     }
     push_event(socket, "equity_data", chart_data)
+  end
+
+  defp push_chart(socket, "equity"),    do: push_chart_data(socket, socket.assigns.equity)
+  defp push_chart(socket, "heatmap"),   do: push_heatmap(socket, socket.assigns.run_id)
+  defp push_chart(socket, "daily_pnl"), do: push_daily_pnl(socket, socket.assigns.run_id)
+  defp push_chart(socket, "drawdown"),  do: push_drawdown(socket, socket.assigns.equity)
+  defp push_chart(socket, "montecarlo"), do: push_montecarlo(socket, socket.assigns.equity)
+  defp push_chart(socket, "histogram"), do: push_returns_histogram(socket, socket.assigns.trades)
+  defp push_chart(socket, "greeks"),    do: push_greeks(socket, socket.assigns.metrics)
+  defp push_chart(socket, _),           do: socket
+
+  defp push_heatmap(socket, run_id) do
+    months =
+      try do
+        QuantEdge.Duck.Reader.get_monthly_pnl(run_id)
+      rescue
+        _ -> []
+      end
+
+    payload = %{
+      months:
+        Enum.map(months, fn m ->
+          %{
+            label: "#{m["year"]}-#{String.pad_leading(to_string(m["month"]), 2, "0")}",
+            pnl: m["pnl"] || 0.0
+          }
+        end)
+    }
+
+    push_event(socket, "heatmap_data", payload)
+  end
+
+  defp push_daily_pnl(socket, run_id) do
+    daily =
+      try do
+        QuantEdge.Duck.Reader.get_daily_pnl(run_id)
+      rescue
+        _ -> []
+      end
+
+    payload = %{
+      labels: Enum.map(daily, &to_string(&1["date"])),
+      pnl: Enum.map(daily, & &1["pnl"]),
+      trades: Enum.map(daily, & &1["trades"])
+    }
+
+    push_event(socket, "daily_pnl_data", payload)
+  end
+
+  defp push_drawdown(socket, []), do: socket
+  defp push_drawdown(socket, equity) do
+    payload = %{
+      labels: Enum.map(equity, & &1["date"]),
+      drawdown: Enum.map(equity, & &1["drawdown_pct"])
+    }
+    push_event(socket, "drawdown_data", payload)
+  end
+
+  defp push_montecarlo(socket, equity) when length(equity) < 2, do: socket
+  defp push_montecarlo(socket, equity) do
+    values = Enum.map(equity, & &1["equity"])
+    labels = Enum.map(equity, & &1["date"])
+
+    returns =
+      values
+      |> Enum.chunk_every(2, 1, :discard)
+      |> Enum.map(fn [a, b] -> if a in [nil, 0, 0.0], do: 0.0, else: (b - a) / a end)
+
+    {p5, median, p95} = monte_carlo_paths(returns, hd(values), 1000)
+
+    payload = %{
+      labels: labels,
+      actual: values,
+      p5: p5,
+      median: median,
+      p95: p95
+    }
+
+    push_event(socket, "montecarlo_data", payload)
+  end
+
+  defp monte_carlo_paths([], start, _n), do: {[start], [start], [start]}
+  defp monte_carlo_paths(returns, start, n_paths) do
+    n_steps = length(returns)
+    returns_vec = List.to_tuple(returns)
+    rsize = tuple_size(returns_vec)
+
+    paths =
+      for _ <- 1..n_paths do
+        Enum.reduce(1..n_steps, {[start], start}, fn _, {acc, eq} ->
+          r = elem(returns_vec, :rand.uniform(rsize) - 1)
+          new_eq = eq * (1.0 + r)
+          {[new_eq | acc], new_eq}
+        end)
+        |> elem(0)
+        |> Enum.reverse()
+      end
+
+    transposed =
+      for step <- 0..n_steps do
+        Enum.map(paths, &Enum.at(&1, step))
+        |> Enum.sort()
+      end
+
+    p5 = Enum.map(transposed, &percentile(&1, 0.05))
+    median = Enum.map(transposed, &percentile(&1, 0.50))
+    p95 = Enum.map(transposed, &percentile(&1, 0.95))
+
+    {p5, median, p95}
+  end
+
+  defp percentile(sorted, p) do
+    n = length(sorted)
+    idx = max(0, min(n - 1, trunc(p * (n - 1))))
+    Enum.at(sorted, idx)
+  end
+
+  defp push_returns_histogram(socket, []), do: socket
+  defp push_returns_histogram(socket, trades) do
+    pnls =
+      trades
+      |> Enum.map(& &1["pnl_net"])
+      |> Enum.filter(&is_number/1)
+
+    if pnls == [] do
+      socket
+    else
+      {min_v, max_v} = Enum.min_max(pnls)
+      bin_count = 20
+      span = max(max_v - min_v, 1.0)
+      bin_w = span / bin_count
+
+      bins =
+        Enum.reduce(pnls, %{}, fn v, acc ->
+          idx = min(bin_count - 1, max(0, trunc((v - min_v) / bin_w)))
+          Map.update(acc, idx, 1, &(&1 + 1))
+        end)
+
+      labels =
+        for i <- 0..(bin_count - 1) do
+          lo = min_v + i * bin_w
+          "#{round(lo)}"
+        end
+
+      counts = for i <- 0..(bin_count - 1), do: Map.get(bins, i, 0)
+
+      push_event(socket, "histogram_data", %{labels: labels, counts: counts})
+    end
+  end
+
+  defp push_greeks(socket, metrics) when is_map(metrics) do
+    if has_greeks?(metrics) do
+      payload = %{
+        labels: ["Delta", "Theta", "Vega", "Gamma"],
+        delta: [metrics["total_delta_pnl"] || 0.0],
+        theta: [metrics["total_theta_pnl"] || 0.0],
+        vega: [metrics["total_vega_pnl"] || 0.0],
+        gamma: [metrics["total_gamma_pnl"] || 0.0]
+      }
+      push_event(socket, "greeks_data", payload)
+    else
+      socket
+    end
+  end
+  defp push_greeks(socket, _), do: socket
+
+  defp has_greeks?(metrics) when is_map(metrics) do
+    Enum.any?(~w(total_delta_pnl total_theta_pnl total_vega_pnl total_gamma_pnl), fn k ->
+      v = metrics[k]
+      is_number(v) and v != 0
+    end)
+  end
+  defp has_greeks?(_), do: false
+
+  defp trade_costs(trade) do
+    [trade["brokerage"], trade["stt"], trade["slippage_cost"], trade["other_charges"]]
+    |> Enum.map(fn
+      v when is_number(v) -> v
+      _ -> 0.0
+    end)
+    |> Enum.sum()
   end
 
   defp safe_get_run(id) do
@@ -377,13 +605,22 @@ defmodule QuantEdgeWeb.RunLive.Show do
   end
 
   @return_keys ~w(total_pnl_gross total_pnl_net cagr roi_pct expectancy profit_factor
-    win_rate_pct avg_win avg_loss win_loss_ratio largest_win largest_loss gross_profit gross_loss)
+    win_rate_pct avg_win avg_loss win_loss_ratio largest_win largest_loss gross_profit gross_loss
+    payoff_ratio avg_trade_pnl median_trade_pnl best_month worst_month avg_monthly_return)
   @risk_keys ~w(max_drawdown_inr max_drawdown_pct avg_drawdown sharpe_ratio sortino_ratio
     calmar_ratio omega_ratio var_95 var_99 cvar ulcer_index daily_volatility ann_volatility
-    skewness kurtosis recovery_factor drawdown_duration_days)
-  @trade_keys ~w(total_trades avg_hold_bars max_hold_bars max_consec_wins max_consec_losses
-    sl_hit_rate_pct target_hit_rate_pct time_exit_rate_pct reentry_count reentry_win_rate)
-  @cost_keys ~w(total_brokerage total_slippage total_stt_cost net_cost_ratio)
+    skewness kurtosis recovery_factor drawdown_duration_days max_drawdown_duration_days
+    information_ratio treynor_ratio downside_deviation tail_ratio gain_to_pain_ratio)
+  @trade_keys ~w(total_trades winning_trades losing_trades avg_hold_bars max_hold_bars
+    min_hold_bars max_consec_wins max_consec_losses sl_hit_rate_pct target_hit_rate_pct
+    time_exit_rate_pct reentry_count reentry_win_rate avg_bars_in_winners avg_bars_in_losers
+    long_count short_count long_win_rate short_win_rate)
+  @cost_keys ~w(total_brokerage total_slippage total_stt_cost total_other_charges
+    net_cost_ratio cost_per_trade gross_to_net_ratio)
+  @options_keys ~w(premium_capture_pct total_theta_collected avg_theta_per_day
+    avg_iv_at_entry avg_iv_at_exit iv_crush_pct avg_net_delta avg_dte min_dte max_dte
+    pct_below_3 pct_3_to_7 pct_above_7)
+  @greeks_keys ~w(total_delta_pnl total_gamma_pnl total_theta_pnl total_vega_pnl)
 
   defp metric_category(key) do
     cond do
@@ -391,6 +628,8 @@ defmodule QuantEdgeWeb.RunLive.Show do
       key in @risk_keys -> "🛡️ Risk Metrics"
       key in @trade_keys -> "📊 Trade Analytics"
       key in @cost_keys -> "💰 Cost Breakdown"
+      key in @options_keys -> "⚙️ Options Analytics"
+      key in @greeks_keys -> "🧮 Greeks PnL"
       true -> "📋 Other"
     end
   end
@@ -399,7 +638,9 @@ defmodule QuantEdgeWeb.RunLive.Show do
   defp category_order("🛡️ Risk Metrics"), do: 1
   defp category_order("📊 Trade Analytics"), do: 2
   defp category_order("💰 Cost Breakdown"), do: 3
-  defp category_order(_), do: 4
+  defp category_order("⚙️ Options Analytics"), do: 4
+  defp category_order("🧮 Greeks PnL"), do: 5
+  defp category_order(_), do: 6
 
   defp humanize_key(key) do
     key
