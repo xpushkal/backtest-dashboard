@@ -11,7 +11,7 @@ defmodule QuantEdgeWeb.RunLive.Show do
     run = safe_get_run(id)
     metrics = safe_get_metrics(id)
     trades = safe_get_trades(id)
-    equity = safe_get_equity(id)
+    equity = safe_get_equity(id) |> downsample(1500)
 
     Logger.info(
       "RunLive.Show mount run_id=#{inspect(id)} status=#{inspect(Map.get(run, :status))} " <>
