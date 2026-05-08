@@ -126,8 +126,9 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
 
   def handle_event("noop", _params, socket), do: {:noreply, socket}
 
-  def handle_event("save_strategy", _params, socket) do
-    form = socket.assigns.form.params
+  def handle_event("save_strategy", params, socket) do
+    submitted = Map.drop(params, ["_target", "_csrf_token"])
+    form = Map.merge(socket.assigns.form.params, submitted)
 
     if (form["name"] || "") == "" do
       {:noreply, put_flash(socket, :error, "Strategy name is required")}
@@ -228,15 +229,15 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
     <div :if={@show_form} class="card">
       <h2 class="mb-6">{if @editing_strategy, do: "Edit Strategy", else: "New Strategy"}</h2>
 
-      <div>
+      <form phx-change="update_form" id="strategy-basic-form">
         <div class="grid-3 mb-6">
           <div class="input-group">
             <label class="input-label">Strategy Name</label>
-            <input type="text" name="name" value={@form.params["name"]} class="input" placeholder="e.g. Short Straddle Nifty" required phx-change="update_form" />
+            <input type="text" name="name" value={@form.params["name"]} class="input" placeholder="e.g. Short Straddle Nifty" required />
           </div>
           <div class="input-group">
             <label class="input-label">Underlying</label>
-            <select name="underlying" class="input" phx-change="update_form">
+            <select name="underlying" class="input">
               <option value="NIFTY" selected={@form.params["underlying"] == "NIFTY" || @form.params["underlying"] == nil}>Nifty</option>
               <option value="BANKNIFTY" selected={@form.params["underlying"] == "BANKNIFTY"}>BankNifty</option>
               <option value="SENSEX" selected={@form.params["underlying"] == "SENSEX"}>Sensex</option>
@@ -244,7 +245,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
           </div>
           <div class="input-group">
             <label class="input-label">Instrument Type</label>
-            <select name="instrument_type" class="input" phx-change="update_form">
+            <select name="instrument_type" class="input">
               <option value="options" selected={@form.params["instrument_type"] != "futures"}>Options</option>
               <option value="futures" selected={@form.params["instrument_type"] == "futures"}>Futures</option>
             </select>
@@ -254,51 +255,53 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
         <div class="grid-4 mb-4">
           <div class="input-group">
             <label class="input-label">Capital (₹)</label>
-            <input type="number" name="capital" value={@form.params["capital"]} class="input" phx-change="update_form" />
+            <input type="number" name="capital" value={@form.params["capital"]} class="input" />
           </div>
           <div class="input-group">
             <label class="input-label">Entry Time</label>
-            <input type="text" name="entry_time" value={@form.params["entry_time"]} class="input" placeholder="HH:MM" phx-change="update_form" />
+            <input type="text" name="entry_time" value={@form.params["entry_time"]} class="input" placeholder="HH:MM" />
           </div>
           <div class="input-group">
             <label class="input-label">Exit Time</label>
-            <input type="text" name="exit_time" value={@form.params["exit_time"]} class="input" placeholder="HH:MM" phx-change="update_form" />
+            <input type="text" name="exit_time" value={@form.params["exit_time"]} class="input" placeholder="HH:MM" />
           </div>
           <div class="input-group">
             <label class="input-label">Brokerage/Lot (₹)</label>
-            <input type="number" name="brokerage" value={@form.params["brokerage"]} class="input" phx-change="update_form" />
+            <input type="number" name="brokerage" value={@form.params["brokerage"]} class="input" />
           </div>
         </div>
         <div class="grid-4 mb-6">
           <div class="input-group">
             <label class="input-label">Slippage Model</label>
-            <select name="slippage_model" class="input" phx-change="update_form">
+            <select name="slippage_model" class="input">
               <option value="fixed_pts" selected={@form.params["slippage_model"] != "percent"}>Fixed Pts</option>
               <option value="percent" selected={@form.params["slippage_model"] == "percent"}>Percent</option>
             </select>
           </div>
           <div class="input-group">
             <label class="input-label">Slippage Value</label>
-            <input type="number" step="0.1" name="slippage_value" value={@form.params["slippage_value"]} class="input" phx-change="update_form" />
+            <input type="number" step="0.1" name="slippage_value" value={@form.params["slippage_value"]} class="input" />
           </div>
           <div class="input-group">
             <label class="input-label">STT on Sell</label>
-            <select name="stt_on_sell" class="input" phx-change="update_form">
+            <select name="stt_on_sell" class="input">
               <option value="true" selected={@form.params["stt_on_sell"] != "false"}>Yes</option>
               <option value="false" selected={@form.params["stt_on_sell"] == "false"}>No</option>
             </select>
           </div>
           <div class="input-group">
             <label class="input-label">Max Concurrent</label>
-            <input type="number" name="max_concurrent" value={@form.params["max_concurrent"]} class="input" phx-change="update_form" />
+            <input type="number" name="max_concurrent" value={@form.params["max_concurrent"]} class="input" />
           </div>
         </div>
 
-        <%!-- Legs --%>
-        <div class="flex-between mb-4">
-          <h3>Legs</h3>
-          <button type="button" class="btn btn-sm btn-secondary" phx-click="add_leg">+ Add Leg</button>
-        </div>
+      </form>
+
+      <%!-- Legs (separate forms, NOT nested in outer form) --%>
+      <div class="flex-between mb-4">
+        <h3>Legs</h3>
+        <button type="button" class="btn btn-sm btn-secondary" phx-click="add_leg">+ Add Leg</button>
+      </div>
 
         <form :for={{leg, idx} <- Enum.with_index(@legs)} phx-change="update_leg" phx-submit="noop" id={"leg-form-#{idx}"} class="card mb-4" style="background: var(--bg-tertiary);">
           <input type="hidden" name="index" value={idx} />
@@ -387,47 +390,48 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
           </div>
         </form>
 
+      <form phx-submit="save_strategy" phx-change="update_form" id="strategy-save-form">
         <%!-- Overall SL/Target Section --%>
         <div class="card mb-6" style="background: var(--bg-tertiary);">
           <h4 class="mb-4">Overall Strategy SL / Target</h4>
           <div class="grid-3">
             <div class="input-group">
               <label class="input-label">Overall SL</label>
-              <select name="overall_sl_enabled" class="input" phx-change="update_form">
+              <select name="overall_sl_enabled" class="input">
                 <option value="false" selected={@form.params["overall_sl_enabled"] != "true"}>Disabled</option>
                 <option value="true" selected={@form.params["overall_sl_enabled"] == "true"}>Enabled</option>
               </select>
             </div>
             <div class="input-group">
               <label class="input-label">Overall SL Type</label>
-              <select name="overall_sl_type" class="input" phx-change="update_form">
+              <select name="overall_sl_type" class="input">
                 <option value="percent_of_premium" selected={@form.params["overall_sl_type"] != "points"}>% Premium</option>
                 <option value="points" selected={@form.params["overall_sl_type"] == "points"}>Points</option>
               </select>
             </div>
             <div class="input-group">
               <label class="input-label">Overall SL Value</label>
-              <input type="number" step="0.1" name="overall_sl_value" value={@form.params["overall_sl_value"]} class="input" phx-change="update_form" />
+              <input type="number" step="0.1" name="overall_sl_value" value={@form.params["overall_sl_value"]} class="input" />
             </div>
           </div>
           <div class="grid-3 mt-3">
             <div class="input-group">
               <label class="input-label">Overall Target</label>
-              <select name="overall_target_enabled" class="input" phx-change="update_form">
+              <select name="overall_target_enabled" class="input">
                 <option value="false" selected={@form.params["overall_target_enabled"] != "true"}>Disabled</option>
                 <option value="true" selected={@form.params["overall_target_enabled"] == "true"}>Enabled</option>
               </select>
             </div>
             <div class="input-group">
               <label class="input-label">Overall Target Type</label>
-              <select name="overall_target_type" class="input" phx-change="update_form">
+              <select name="overall_target_type" class="input">
                 <option value="percent_of_premium" selected={@form.params["overall_target_type"] != "points"}>% Premium</option>
                 <option value="points" selected={@form.params["overall_target_type"] == "points"}>Points</option>
               </select>
             </div>
             <div class="input-group">
               <label class="input-label">Overall Target Value</label>
-              <input type="number" step="0.1" name="overall_target_value" value={@form.params["overall_target_value"]} class="input" phx-change="update_form" />
+              <input type="number" step="0.1" name="overall_target_value" value={@form.params["overall_target_value"]} class="input" />
             </div>
           </div>
         </div>
@@ -441,12 +445,12 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
         </div>
 
         <div class="flex-gap-3">
-          <button type="button" class="btn btn-primary btn-lg" phx-click="save_strategy">
+          <button type="submit" class="btn btn-primary btn-lg">
             {if @editing_strategy, do: "Update Strategy", else: "Save Strategy"}
           </button>
           <a href="/strategies" class="btn btn-secondary btn-lg">Cancel</a>
         </div>
-      </div>
+      </form>
     </div>
 
     <%!-- Delete Modal --%>
