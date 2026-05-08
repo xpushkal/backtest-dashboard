@@ -173,10 +173,19 @@ defmodule QuantEdge.Duck.Writer do
 
   @impl true
   def handle_call({:query, sql, params}, _from, state) do
-    result =
+    raw =
       case params do
         [] -> Duckdbex.query(state.conn, sql)
         _ -> Duckdbex.query(state.conn, sql, params)
+      end
+
+    result =
+      case raw do
+        {:ok, ref} when is_reference(ref) ->
+          {:ok, Duckdbex.fetch_all(ref)}
+
+        other ->
+          other
       end
 
     {:reply, result, state}
@@ -278,6 +287,8 @@ defmodule QuantEdge.Duck.Writer do
       )
       """,
       "ALTER TABLE trades ADD COLUMN IF NOT EXISTS other_charges DOUBLE",
+      "ALTER TABLE trades ADD COLUMN IF NOT EXISTS entry_date VARCHAR",
+      "ALTER TABLE trades ADD COLUMN IF NOT EXISTS exit_date VARCHAR",
       """
       CREATE TABLE IF NOT EXISTS equity_curves (
         run_id        VARCHAR,
