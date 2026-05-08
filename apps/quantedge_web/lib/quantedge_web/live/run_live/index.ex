@@ -183,19 +183,12 @@ defmodule QuantEdgeWeb.RunLive.Index do
             </div>
           </div>
 
-          <div class="grid-3">
-            <div class="input-group">
-              <label class="input-label">Capital (₹)</label>
-              <input type="number" name="capital" value={@config_form["capital"]} class="input" />
-            </div>
-            <div class="input-group">
-              <label class="input-label">Brokerage/Order (₹)</label>
-              <input type="number" name="brokerage" value={@config_form["brokerage"]} class="input" />
-            </div>
-            <div class="input-group">
-              <label class="input-label">Slippage (pts)</label>
-              <input type="number" step="0.1" name="slippage" value={@config_form["slippage"]} class="input" />
-            </div>
+          <div class="input-group">
+            <label class="input-label">Capital (₹)</label>
+            <input type="number" name="capital" value={@config_form["capital"]} class="input" />
+            <p class="text-xs text-muted mt-1">
+              Brokerage and slippage come from the strategy config (TOML). Edit them on the strategy page.
+            </p>
           </div>
 
           <div class="modal-footer">
@@ -215,9 +208,7 @@ defmodule QuantEdgeWeb.RunLive.Index do
       "strategy_id" => "",
       "date_from" => "2021-01-01",
       "date_to" => "2024-12-31",
-      "capital" => "100000",
-      "brokerage" => "20",
-      "slippage" => "0.5"
+      "capital" => "100000"
     }
   end
 

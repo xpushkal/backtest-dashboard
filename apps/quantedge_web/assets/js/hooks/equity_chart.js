@@ -25,6 +25,10 @@ const EquityChart = {
 
     const ctx = canvas.getContext("2d")
 
+    const eqGradient = ctx.createLinearGradient(0, 0, 0, ctx.canvas.height || 360)
+    eqGradient.addColorStop(0, "rgba(34, 211, 238, 0.20)")
+    eqGradient.addColorStop(1, "rgba(34, 211, 238, 0.00)")
+
     this.chart = new Chart(ctx, {
       type: "line",
       data: {
@@ -33,22 +37,22 @@ const EquityChart = {
           {
             label: "Equity",
             data: data.equity,
-            borderColor: "#00d4ff",
-            backgroundColor: "rgba(0, 212, 255, 0.05)",
+            borderColor: "#22d3ee",
+            backgroundColor: eqGradient,
             borderWidth: 2,
             fill: true,
-            tension: 0.2,
+            tension: 0.25,
             pointRadius: 0,
             yAxisID: "y"
           },
           {
             label: "Drawdown %",
             data: data.drawdown.map(d => -Math.abs(d)),
-            borderColor: "rgba(255, 61, 61, 0.6)",
-            backgroundColor: "rgba(255, 61, 61, 0.1)",
+            borderColor: "#ff6b6b",
+            backgroundColor: "rgba(255, 107, 107, 0.10)",
             borderWidth: 1,
             fill: true,
-            tension: 0.2,
+            tension: 0.25,
             pointRadius: 0,
             yAxisID: "y1"
           }
@@ -57,11 +61,13 @@ const EquityChart = {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: false,
         interaction: {
           mode: "index",
           intersect: false,
         },
         plugins: {
+          decimation: { enabled: true, algorithm: "lttb", samples: 400 },
           legend: {
             display: true,
             position: "top",
@@ -113,9 +119,9 @@ const EquityChart = {
           y1: {
             display: true,
             position: "right",
-            title: { display: true, text: "Drawdown %", color: "#ff3d3d" },
+            title: { display: true, text: "Drawdown %", color: "#ff6b6b" },
             ticks: {
-              color: "#ff3d3d",
+              color: "#ff6b6b",
               font: { family: "JetBrains Mono", size: 11 },
               callback: (v) => `${v.toFixed(1)}%`
             },

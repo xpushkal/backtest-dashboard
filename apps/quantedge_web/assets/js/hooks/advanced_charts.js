@@ -388,22 +388,40 @@ const DrawdownChart = {
     if (!canvas) return
     if (this.chart) this.chart.destroy()
     const ctx = canvas.getContext("2d")
+    // Drawdown is plotted as a negative value so it sits below zero and
+    // visually reads as "loss". Soft red fill with a brighter stroke.
+    const dd = (data.drawdown || []).map(v => -Math.abs(v))
+    const gradient = ctx.createLinearGradient(0, 0, 0, ctx.canvas.height || 280)
+    gradient.addColorStop(0, "rgba(255, 107, 107, 0.05)")
+    gradient.addColorStop(1, "rgba(255, 107, 107, 0.35)")
+
     this.chart = new Chart(ctx, {
       type: "line",
       data: {
         labels: data.labels,
         datasets: [{
-          label: "Drawdown %", data: data.drawdown,
-          borderColor: "#ff3d3d", backgroundColor: "rgba(255,61,61,0.15)",
-          borderWidth: 1.5, fill: true, pointRadius: 0, tension: 0.2
+          label: "Drawdown %", data: dd,
+          borderColor: "#ff6b6b", backgroundColor: gradient,
+          borderWidth: 1.5, fill: true, pointRadius: 0, tension: 0.25,
+          spanGaps: true
         }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: "#8b8fa3" } } },
+        animation: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { labels: { color: "#8b8fa3", font: { family: "Inter", size: 11 }, usePointStyle: true } },
+          tooltip: {
+            backgroundColor: "#1a1a2e", titleColor: "#e8eaf0", bodyColor: "#8b8fa3",
+            borderColor: "#2a2a40", borderWidth: 1,
+            callbacks: { label: c => `Drawdown: ${Math.abs(c.raw).toFixed(2)}%` }
+          },
+          decimation: { enabled: true, algorithm: "lttb", samples: 400 }
+        },
         scales: {
-          x: { ticks: { color: "#5a5e73", maxTicksLimit: 12 }, grid: { color: "rgba(30,30,46,0.3)" } },
-          y: { ticks: { color: "#8b8fa3", callback: v => `${v.toFixed(1)}%` }, grid: { color: "rgba(30,30,46,0.5)" } }
+          x: { ticks: { color: "#5a5e73", maxTicksLimit: 10 }, grid: { color: "rgba(30,30,46,0.3)" } },
+          y: { ticks: { color: "#8b8fa3", callback: v => `${Math.abs(v).toFixed(1)}%` }, grid: { color: "rgba(30,30,46,0.5)" }, reverse: false }
         }
       }
     })
