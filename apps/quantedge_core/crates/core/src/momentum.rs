@@ -346,7 +346,7 @@ mod tests {
                 time: *time,
                 option_type: "CE".to_string(),
                 strike_offset: 0,
-                close: 200.0,
+                close: 200.0, high: 200.0, low: 200.0,
                 spot: *spot,
             })
             .collect()

@@ -31,6 +31,10 @@ pub struct Leg {
     pub entry_spot: f64,
     pub current_price: f64,
     pub current_spot: f64,
+    /// Highest option premium seen during the current bar (for intrabar SL detection on shorts).
+    pub intrabar_high: f64,
+    /// Lowest option premium seen during the current bar (for intrabar SL detection on longs).
+    pub intrabar_low: f64,
     pub lots: u32,
     pub lot_size: u32,
     pub unrealized_pnl: f64,
@@ -53,6 +57,8 @@ impl Leg {
             entry_spot,
             current_price: entry_price,
             current_spot: entry_spot,
+            intrabar_high: entry_price,
+            intrabar_low: entry_price,
             lots: config.lots,
             lot_size,
             unrealized_pnl: 0.0,
@@ -81,20 +87,78 @@ impl Leg {
         (self.current_price - self.entry_price) * self.direction() * self.quantity()
     }
 
-    /// Mark-to-market update. Called every bar.
+    /// Mark-to-market update with close-only (intrabar high/low default to close).
+    ///
+    /// Kept for tests and call sites that don't have OHLC. Production runner
+    /// uses [`update_full`] instead so intrabar SL/Target detection works.
     pub fn update(&mut self, close_price: f64, spot: f64) {
+        self.update_full(close_price, close_price, close_price, spot);
+    }
+
+    /// Mark-to-market update with full intrabar range.
+    ///
+    /// On the entry bar (`bars_held == 0` before this call) we treat the bar
+    /// as close-only — we entered AT the close, so the bar's earlier high/low
+    /// happened before our position existed and shouldn't trigger our SL.
+    /// Subsequent bars use the real intrabar range so a wick that hits the SL
+    /// is detected even if the close came back inside the threshold.
+    pub fn update_full(&mut self, close_price: f64, high: f64, low: f64, spot: f64) {
+        let entry_bar = self.bars_held == 0;
         self.current_price = close_price;
         self.current_spot = spot;
+        if entry_bar {
+            self.intrabar_high = close_price;
+            self.intrabar_low = close_price;
+        } else {
+            // Defensive: clamp so high >= close >= low even if upstream data is dirty.
+            self.intrabar_high = high.max(close_price);
+            self.intrabar_low = low.min(close_price);
+        }
         self.bars_held += 1;
         self.unrealized_pnl = self.calculate_pnl();
 
-        // Track peak PnL for trailing SL
+        // Track peak PnL for trailing SL (uses close-based PnL — intrabar wicks
+        // shouldn't ratchet the trail HWM).
         if self.unrealized_pnl > self.peak_pnl {
             self.peak_pnl = self.unrealized_pnl;
         }
 
         // Update trailing SL state
         self.update_trail_state();
+    }
+
+    /// Worst intrabar option premium for this leg's direction.
+    /// Short positions are hurt by HIGH prices; long positions are hurt by LOW prices.
+    fn worst_intrabar_price(&self) -> f64 {
+        match self.config.position {
+            PositionSide::Sell => self.intrabar_high,
+            PositionSide::Buy => self.intrabar_low,
+        }
+    }
+
+    /// Best intrabar option premium for this leg's direction.
+    fn best_intrabar_price(&self) -> f64 {
+        match self.config.position {
+            PositionSide::Sell => self.intrabar_low,
+            PositionSide::Buy => self.intrabar_high,
+        }
+    }
+
+    /// Build an SL context evaluated at a hypothetical price.
+    /// Used to check whether an intrabar wick would have tripped the SL/target.
+    fn make_sl_context_at(&self, price: f64) -> SlContext {
+        let pnl = (price - self.entry_price) * self.direction() * self.quantity();
+        SlContext {
+            entry_price: self.entry_price,
+            current_price: price,
+            entry_spot: self.entry_spot,
+            current_spot: self.current_spot,
+            quantity: self.quantity(),
+            lots: self.lots,
+            lot_size: self.lot_size,
+            direction: self.direction(),
+            unrealized_pnl: pnl,
+        }
     }
 
     /// Update trailing SL state machine.
@@ -194,6 +258,11 @@ impl Leg {
     }
 
     /// Check if the fixed SL has been hit.
+    ///
+    /// Uses the intrabar worst price (high for shorts, low for longs) for option-premium-
+    /// based SL types so a wick that breaches the SL is detected even when the close
+    /// recovered inside the threshold. `IndexPoints` keeps close-only behavior because
+    /// we don't have intrabar high/low for the underlying spot.
     pub fn check_sl(&self) -> Option<ExitReason> {
         // If trailing SL already triggered, return that
         if let SlState::Triggered { reason } = &self.sl_state {
@@ -204,7 +273,13 @@ impl Leg {
             return None;
         }
 
-        let ctx = self.make_sl_context();
+        use crate::config::SlType;
+        let ctx = match self.config.stop_loss_type {
+            SlType::IndexPoints | SlType::DeltaBreach | SlType::CombinedPremium => {
+                self.make_sl_context()
+            }
+            _ => self.make_sl_context_at(self.worst_intrabar_price()),
+        };
         if is_sl_triggered(&self.config.stop_loss_type, self.config.stop_loss_value, &ctx) {
             Some(ExitReason::StopLoss)
         } else {
@@ -213,17 +288,38 @@ impl Leg {
     }
 
     /// Check if target profit has been reached.
+    ///
+    /// Uses the intrabar best price (low for shorts, high for longs) symmetrically
+    /// to the SL check.
     pub fn check_target(&self) -> Option<ExitReason> {
         if !self.config.target_profit_enabled {
             return None;
         }
 
-        let ctx = self.make_sl_context();
+        let ctx = self.make_sl_context_at(self.best_intrabar_price());
         if is_target_triggered(&self.config.target_profit_type, self.config.target_profit_value, &ctx) {
             Some(ExitReason::Target)
         } else {
             None
         }
+    }
+
+    /// Price at which the SL would have filled given the current intrabar state.
+    /// Returns the worst intrabar price when the SL is triggered via an option-premium
+    /// SL type; falls back to the close otherwise.
+    pub fn sl_fill_price(&self) -> f64 {
+        use crate::config::SlType;
+        match self.config.stop_loss_type {
+            SlType::IndexPoints | SlType::DeltaBreach | SlType::CombinedPremium | SlType::None => {
+                self.current_price
+            }
+            _ => self.worst_intrabar_price(),
+        }
+    }
+
+    /// Price at which a target would have filled given the current intrabar state.
+    pub fn target_fill_price(&self) -> f64 {
+        self.best_intrabar_price()
     }
 }
 

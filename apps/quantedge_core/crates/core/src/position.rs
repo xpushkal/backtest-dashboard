@@ -72,6 +72,10 @@ pub struct ClosedTrade {
     pub brokerage: f64,
     pub stt: f64,
     pub slippage_cost: f64,
+    /// Indian regulatory + exchange fees: NSE exchange transaction (0.053%),
+    /// SEBI turnover (0.0001%), stamp duty on buy side (0.003%), and GST 18%
+    /// on (brokerage + exchange + SEBI). Roughly 0.10–0.15% of round-trip turnover.
+    pub other_charges: f64,
     pub pnl_net: f64,
     pub exit_reason: ExitReason,
     pub bars_held: u32,
@@ -93,6 +97,7 @@ impl ClosedTrade {
         brokerage: f64,
         stt: f64,
         slippage_cost: f64,
+        other_charges: f64,
         reentry_attempt: u32,
     ) -> Self {
         let direction = match leg.config.position {
@@ -104,7 +109,7 @@ impl ClosedTrade {
         // NOTE: slippage_cost is already baked into pnl_gross because the runner
         // passes slipped entry/exit prices. Stored here for cost-breakdown
         // reporting only — do NOT subtract again.
-        let pnl_net = pnl_gross - brokerage - stt;
+        let pnl_net = pnl_gross - brokerage - stt - other_charges;
 
         Self {
             entry_date,
@@ -123,6 +128,7 @@ impl ClosedTrade {
             brokerage,
             stt,
             slippage_cost,
+            other_charges,
             pnl_net,
             exit_reason,
             bars_held: leg.bars_held,
@@ -217,6 +223,7 @@ mod tests {
             brokerage: 80.0,
             stt: 1.40625,
             slippage_cost: 30.0,
+            other_charges: 0.0,
             pnl_net: 750.0 - 80.0 - 1.40625,
             exit_reason: ExitReason::TimeExit,
             bars_held: 360,

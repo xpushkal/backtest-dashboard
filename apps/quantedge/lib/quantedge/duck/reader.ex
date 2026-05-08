@@ -13,7 +13,7 @@ defmodule QuantEdge.Duck.Reader do
     option_type position_side
     entry_price exit_price entry_spot exit_spot
     lots lot_size
-    pnl_gross pnl_net brokerage stt slippage_cost
+    pnl_gross pnl_net brokerage stt slippage_cost other_charges
     exit_reason bars_held reentry_attempt
   )
 

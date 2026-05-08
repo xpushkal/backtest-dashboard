@@ -15,6 +15,8 @@ fn make_bar(date: NaiveDate, time: NaiveTime, close: f64, spot: f64) -> SimBar {
         option_type: "CE".to_string(),
         strike_offset: 0,
         close,
+        high: close,
+        low: close,
         spot,
     }
 }

@@ -156,7 +156,7 @@ defmodule QuantEdgeWeb.RunLive.Index do
     </div>
 
     <%!-- New Run Config Modal --%>
-    <div :if={@show_config} class="modal-overlay" phx-click="hide_config">
+    <div :if={@show_config} class="modal-overlay">
       <div class="modal-content" phx-click-away="hide_config" style="max-width: 640px;">
         <div class="modal-header">
           <h3 class="modal-title">🚀 Configure Backtest</h3>

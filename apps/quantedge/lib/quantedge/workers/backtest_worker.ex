@@ -35,13 +35,30 @@ defmodule QuantEdge.Workers.BacktestWorker do
       {:ok, result_json} ->
         result = Jason.decode!(result_json)
 
+        trades = result["trades"] || []
+        equity = result["equity_curve"] || []
+        metrics_map = result["metrics"] || %{}
+
+        Logger.info(
+          "NIF returned for #{run_id}: trades=#{length(trades)} equity=#{length(equity)} " <>
+            "metrics=#{map_size(metrics_map)} top_keys=#{inspect(Map.keys(result))}"
+        )
+
+        if trades == [] do
+          Logger.warning(
+            "NIF returned 0 trades. Strategy=#{strategy.name} symbol=#{strategy.underlying} " <>
+              "range=#{run.date_from}..#{run.date_to}. " <>
+              "Result snippet: #{String.slice(result_json, 0, 500)}"
+          )
+        end
+
         # 4. Store detailed data in DuckDB
-        Writer.insert_trades(run_id, result["trades"] || [])
-        Writer.insert_equity_curve(run_id, result["equity_curve"] || [])
-        Writer.insert_metrics(run_id, result["metrics"] || %{})
+        Writer.insert_trades(run_id, trades)
+        Writer.insert_equity_curve(run_id, equity)
+        Writer.insert_metrics(run_id, metrics_map)
 
         # 5. Store summary in Postgres
-        summary = extract_summary(result["metrics"] || %{})
+        summary = extract_summary(metrics_map)
         Runs.store_result(run_id, summary)
 
         # 6. Broadcast completion
