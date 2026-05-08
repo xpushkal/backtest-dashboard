@@ -59,7 +59,7 @@ defmodule QuantEdgeWeb.UiComponents do
   end
 
   # --- Empty State ---
-  attr :icon, :string, default: "📊"
+  attr :icon, :string, default: ""
   attr :title, :string, required: true
   attr :description, :string, default: nil
   attr :action_label, :string, default: nil
@@ -68,7 +68,7 @@ defmodule QuantEdgeWeb.UiComponents do
   def empty_state(assigns) do
     ~H"""
     <div class="empty-state">
-      <div class="empty-icon">{@icon}</div>
+      <div :if={@icon != ""} class="empty-icon">{@icon}</div>
       <h3 class="empty-title">{@title}</h3>
       <p :if={@description} class="empty-description">{@description}</p>
       <a :if={@action_label} href={@action_href} class="btn btn-primary">{@action_label}</a>

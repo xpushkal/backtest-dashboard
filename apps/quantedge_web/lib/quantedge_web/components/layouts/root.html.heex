@@ -21,27 +21,21 @@
 
         <nav class="sidebar-nav">
           <a href="/" class={"nav-item #{if assigns[:active_nav] == :dashboard, do: "active"}"}>
-            <span class="nav-icon">📊</span>
             Dashboard
           </a>
           <a href="/strategies" class={"nav-item #{if assigns[:active_nav] == :strategies, do: "active"}"}>
-            <span class="nav-icon">⚡</span>
             Strategies
           </a>
           <a href="/runs" class={"nav-item #{if assigns[:active_nav] == :runs, do: "active"}"}>
-            <span class="nav-icon">🚀</span>
             Runs
           </a>
           <a href="/optimizer" class={"nav-item #{if assigns[:active_nav] == :optimizer, do: "active"}"}>
-            <span class="nav-icon">🔧</span>
             Optimizer
           </a>
           <a href="/portfolio" class={"nav-item #{if assigns[:active_nav] == :portfolio, do: "active"}"}>
-            <span class="nav-icon">📈</span>
             Portfolio
           </a>
           <a href="/data" class={"nav-item #{if assigns[:active_nav] == :data, do: "active"}"}>
-            <span class="nav-icon">💾</span>
             Data Explorer
           </a>
         </nav>
