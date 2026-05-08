@@ -67,7 +67,7 @@ defmodule QuantEdgeWeb.StrategyLive.Show do
     ~H"""
     <div class="page-header">
       <div>
-        <h1>⚡ {@strategy.name}</h1>
+        <h1> {@strategy.name}</h1>
         <p class="text-sm text-muted mt-2">
           <.underlying_badge underlying={@strategy.underlying} />
           <span class="ml-2">Options</span>
@@ -77,7 +77,7 @@ defmodule QuantEdgeWeb.StrategyLive.Show do
       </div>
       <div class="flex-gap-2">
         <button class="btn btn-primary" phx-click="show_run_modal">▶ Run Backtest</button>
-        <a href={"/strategies/#{@strategy.id}/edit"} class="btn btn-secondary">✏ Edit</a>
+        <a href={"/strategies/#{@strategy.id}/edit"} class="btn btn-secondary"> Edit</a>
         <a href="/strategies" class="btn btn-secondary">← Back</a>
       </div>
     </div>
@@ -85,7 +85,7 @@ defmodule QuantEdgeWeb.StrategyLive.Show do
     <%!-- Legs Breakdown --%>
     <div class="grid-2 mb-8" style="gap: 1.5rem;">
       <div class="card">
-        <h3 class="mb-4">📋 Legs Configuration</h3>
+        <h3 class="mb-4"> Legs Configuration</h3>
         <div :if={@legs == []} class="text-muted">No legs configured.</div>
         <div :for={{leg, idx} <- Enum.with_index(@legs)} class="mb-4" style="padding: 0.75rem; border: 1px solid var(--border-primary); border-radius: 8px; background: var(--bg-tertiary);">
           <div class="flex-between mb-2">
@@ -117,7 +117,7 @@ defmodule QuantEdgeWeb.StrategyLive.Show do
 
       <%!-- TOML Config --%>
       <div class="card">
-        <h3 class="mb-4">📄 TOML Configuration</h3>
+        <h3 class="mb-4"> TOML Configuration</h3>
         <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 1rem; max-height: 400px; overflow-y: auto;">
           <pre class="text-mono text-sm" style="white-space: pre-wrap; color: var(--accent-cyan);">{@strategy.config_toml || "# No configuration"}</pre>
         </div>
@@ -127,7 +127,7 @@ defmodule QuantEdgeWeb.StrategyLive.Show do
     <%!-- Run History --%>
     <div class="card mb-8">
       <div class="card-header">
-        <span class="card-title">📊 Run History ({length(@runs)} runs)</span>
+        <span class="card-title"> Run History ({length(@runs)} runs)</span>
       </div>
       <div :if={@runs == []} class="text-center text-muted" style="padding: 2rem;">
         No runs yet. Click "Run Backtest" above to start.
@@ -189,7 +189,7 @@ defmodule QuantEdgeWeb.StrategyLive.Show do
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" phx-click="hide_run_modal">Cancel</button>
-            <button type="submit" class="btn btn-primary">🚀 Run Backtest</button>
+            <button type="submit" class="btn btn-primary"> Run Backtest</button>
           </div>
         </form>
       </div>

@@ -57,7 +57,7 @@ defmodule QuantEdgeWeb.RunLive.Show do
     ~H"""
     <div class="page-header">
       <div>
-        <h1>🚀 {run_name(@run)}</h1>
+        <h1> {run_name(@run)}</h1>
         <p class="text-sm text-muted mt-2">
           <.underlying_badge underlying={run_underlying(@run)} />
           <span class="ml-2">{fmt_date(@run.date_from)} — {fmt_date(@run.date_to)}</span>
@@ -355,15 +355,19 @@ defmodule QuantEdgeWeb.RunLive.Show do
 
   defp push_montecarlo(socket, equity) when length(equity) < 2, do: socket
   defp push_montecarlo(socket, equity) do
-    values = Enum.map(equity, & &1["equity"])
-    labels = Enum.map(equity, & &1["date"])
+    # Downsample for the actual line + labels so the chart isn't dense.
+    sampled = mc_downsample(equity, 200)
+    values = Enum.map(sampled, & &1["equity"])
+    labels = Enum.map(sampled, & &1["date"])
 
     returns =
       values
       |> Enum.chunk_every(2, 1, :discard)
       |> Enum.map(fn [a, b] -> if a in [nil, 0, 0.0], do: 0.0, else: (b - a) / a end)
 
-    {p5, median, p95} = monte_carlo_paths(returns, hd(values), 1000)
+    # Deterministic per run_id so the chart doesn't shift on reload.
+    seed_rand(socket.assigns.run_id)
+    {p5, median, p95} = monte_carlo_paths(returns, hd(values), 500)
 
     payload = %{
       labels: labels,
@@ -376,37 +380,56 @@ defmodule QuantEdgeWeb.RunLive.Show do
     push_event(socket, "montecarlo_data", payload)
   end
 
+  defp mc_downsample(list, max_points) when length(list) <= max_points, do: list
+  defp mc_downsample(list, max_points) do
+    n = length(list)
+    step = n / max_points
+
+    list
+    |> Enum.with_index()
+    |> Enum.filter(fn {_, i} -> rem(i, max(1, trunc(step))) == 0 end)
+    |> Enum.map(&elem(&1, 0))
+  end
+
+  # Equity-curve downsampler used in mount/3 to keep the wire payload small.
+  defp downsample(list, max_points) when length(list) <= max_points, do: list
+  defp downsample(list, max_points), do: mc_downsample(list, max_points)
+
+  defp seed_rand(run_id) do
+    h = :erlang.phash2(run_id)
+    :rand.seed(:exsss, {h, h + 1, h + 2})
+  end
+
   defp monte_carlo_paths([], start, _n), do: {[start], [start], [start]}
   defp monte_carlo_paths(returns, start, n_paths) do
-    n_steps = length(returns)
     returns_vec = List.to_tuple(returns)
     rsize = tuple_size(returns_vec)
+    init_col = List.duplicate(start, n_paths)
 
-    paths =
-      for _ <- 1..n_paths do
-        Enum.reduce(1..n_steps, {[start], start}, fn _, {acc, eq} ->
-          r = elem(returns_vec, :rand.uniform(rsize) - 1)
-          new_eq = eq * (1.0 + r)
-          {[new_eq | acc], new_eq}
-        end)
-        |> elem(0)
-        |> Enum.reverse()
-      end
+    # Simulate column-by-column: each "column" holds the equity of every path
+    # at that timestep. Avoids the O(N²) Enum.at-based transpose.
+    {_, columns_rev} =
+      Enum.reduce(returns, {init_col, [init_col]}, fn _, {prev, acc} ->
+        next =
+          Enum.map(prev, fn eq ->
+            r = elem(returns_vec, :rand.uniform(rsize) - 1)
+            eq * (1.0 + r)
+          end)
 
-    transposed =
-      for step <- 0..n_steps do
-        Enum.map(paths, &Enum.at(&1, step))
-        |> Enum.sort()
-      end
+        {next, [next | acc]}
+      end)
 
-    p5 = Enum.map(transposed, &percentile(&1, 0.05))
-    median = Enum.map(transposed, &percentile(&1, 0.50))
-    p95 = Enum.map(transposed, &percentile(&1, 0.95))
+    columns = Enum.reverse(columns_rev)
+
+    p5 = Enum.map(columns, &percentile(&1, 0.05))
+    median = Enum.map(columns, &percentile(&1, 0.50))
+    p95 = Enum.map(columns, &percentile(&1, 0.95))
 
     {p5, median, p95}
   end
 
-  defp percentile(sorted, p) do
+  defp percentile(values, p) do
+    sorted = Enum.sort(values)
     n = length(sorted)
     idx = max(0, min(n - 1, trunc(p * (n - 1))))
     Enum.at(sorted, idx)
@@ -624,22 +647,22 @@ defmodule QuantEdgeWeb.RunLive.Show do
 
   defp metric_category(key) do
     cond do
-      key in @return_keys -> "📈 Return Metrics"
-      key in @risk_keys -> "🛡️ Risk Metrics"
-      key in @trade_keys -> "📊 Trade Analytics"
-      key in @cost_keys -> "💰 Cost Breakdown"
-      key in @options_keys -> "⚙️ Options Analytics"
-      key in @greeks_keys -> "🧮 Greeks PnL"
-      true -> "📋 Other"
+      key in @return_keys -> " Return Metrics"
+      key in @risk_keys -> " Risk Metrics"
+      key in @trade_keys -> " Trade Analytics"
+      key in @cost_keys -> " Cost Breakdown"
+      key in @options_keys -> " Options Analytics"
+      key in @greeks_keys -> " Greeks PnL"
+      true -> " Other"
     end
   end
 
-  defp category_order("📈 Return Metrics"), do: 0
-  defp category_order("🛡️ Risk Metrics"), do: 1
-  defp category_order("📊 Trade Analytics"), do: 2
-  defp category_order("💰 Cost Breakdown"), do: 3
-  defp category_order("⚙️ Options Analytics"), do: 4
-  defp category_order("🧮 Greeks PnL"), do: 5
+  defp category_order(" Return Metrics"), do: 0
+  defp category_order(" Risk Metrics"), do: 1
+  defp category_order(" Trade Analytics"), do: 2
+  defp category_order(" Cost Breakdown"), do: 3
+  defp category_order(" Options Analytics"), do: 4
+  defp category_order(" Greeks PnL"), do: 5
   defp category_order(_), do: 6
 
   defp humanize_key(key) do

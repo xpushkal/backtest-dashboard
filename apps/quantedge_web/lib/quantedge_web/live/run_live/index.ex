@@ -92,7 +92,7 @@ defmodule QuantEdgeWeb.RunLive.Index do
 
     ~H"""
     <div class="page-header">
-      <h1>🚀 Backtest Runs</h1>
+      <h1> Backtest Runs</h1>
       <button class="btn btn-primary" phx-click="show_config">+ New Run</button>
     </div>
 
@@ -149,7 +149,7 @@ defmodule QuantEdgeWeb.RunLive.Index do
 
     <div :if={@filtered_runs == []}>
       <.empty_state
-        icon="🚀"
+        icon=""
         title="No runs found"
         description="Configure and launch your first backtest to see results here."
       />
@@ -159,7 +159,7 @@ defmodule QuantEdgeWeb.RunLive.Index do
     <div :if={@show_config} class="modal-overlay">
       <div class="modal-content" phx-click-away="hide_config" style="max-width: 640px;">
         <div class="modal-header">
-          <h3 class="modal-title">🚀 Configure Backtest</h3>
+          <h3 class="modal-title"> Configure Backtest</h3>
           <button class="modal-close" phx-click="hide_config">×</button>
         </div>
 
@@ -183,24 +183,17 @@ defmodule QuantEdgeWeb.RunLive.Index do
             </div>
           </div>
 
-          <div class="grid-3">
-            <div class="input-group">
-              <label class="input-label">Capital (₹)</label>
-              <input type="number" name="capital" value={@config_form["capital"]} class="input" />
-            </div>
-            <div class="input-group">
-              <label class="input-label">Brokerage/Order (₹)</label>
-              <input type="number" name="brokerage" value={@config_form["brokerage"]} class="input" />
-            </div>
-            <div class="input-group">
-              <label class="input-label">Slippage (pts)</label>
-              <input type="number" step="0.1" name="slippage" value={@config_form["slippage"]} class="input" />
-            </div>
+          <div class="input-group">
+            <label class="input-label">Capital (₹)</label>
+            <input type="number" name="capital" value={@config_form["capital"]} class="input" />
+            <p class="text-xs text-muted mt-1">
+              Brokerage and slippage come from the strategy config (TOML). Edit them on the strategy page.
+            </p>
           </div>
 
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" phx-click="hide_config">Cancel</button>
-            <button type="submit" class="btn btn-primary">🚀 Run Backtest</button>
+            <button type="submit" class="btn btn-primary"> Run Backtest</button>
           </div>
         </form>
       </div>
@@ -215,9 +208,7 @@ defmodule QuantEdgeWeb.RunLive.Index do
       "strategy_id" => "",
       "date_from" => "2021-01-01",
       "date_to" => "2024-12-31",
-      "capital" => "100000",
-      "brokerage" => "20",
-      "slippage" => "0.5"
+      "capital" => "100000"
     }
   end
 

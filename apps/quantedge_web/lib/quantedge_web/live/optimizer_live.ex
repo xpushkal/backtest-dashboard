@@ -124,7 +124,7 @@ defmodule QuantEdgeWeb.OptimizerLive do
   def render(assigns) do
     ~H"""
     <div class="page-header">
-      <h1>🔧 Optimizer</h1>
+      <h1> Optimizer</h1>
     </div>
 
     <div class="grid-2" style="grid-template-columns: 1fr 1fr; gap: 1.5rem;">
@@ -185,7 +185,7 @@ defmodule QuantEdgeWeb.OptimizerLive do
               phx-click="start_optimization"
               disabled={@running || @selected_strategy == nil}
             >
-              {if @running, do: "Running...", else: "🚀 Start Optimization"}
+              {if @running, do: "Running...", else: " Start Optimization"}
             </button>
           </div>
         </div>
@@ -201,7 +201,7 @@ defmodule QuantEdgeWeb.OptimizerLive do
       <div>
         <div :if={@results == []} class="card">
           <.empty_state
-            icon="🔧"
+            icon=""
             title="No results yet"
             description="Configure parameters and run an optimization to see results."
           />
@@ -214,11 +214,11 @@ defmodule QuantEdgeWeb.OptimizerLive do
               <button
                 class={"btn btn-sm #{if @show_tab == :table, do: "btn-primary", else: "btn-secondary"}"}
                 phx-click="switch_tab" phx-value-tab="table"
-              >📊 Table</button>
+              > Table</button>
               <button
                 class={"btn btn-sm #{if @show_tab == :heatmap, do: "btn-primary", else: "btn-secondary"}"}
                 phx-click="switch_tab" phx-value-tab="heatmap"
-              >🗺️ Heatmap</button>
+              > Heatmap</button>
             </div>
           </div>
 
@@ -297,7 +297,7 @@ defmodule QuantEdgeWeb.OptimizerLive do
       <div class="card" style="max-width: 500px; margin: 10vh auto; position: relative; z-index: 1001;" phx-click-away="close_modal">
         <div class="flex-between mb-4">
           <h3>Combo #{@selected_combo["combo_index"]}</h3>
-          <button class="btn btn-sm btn-secondary" phx-click="close_modal">✕</button>
+          <button class="btn btn-sm btn-secondary" phx-click="close_modal"></button>
         </div>
 
         <div class="mb-4">

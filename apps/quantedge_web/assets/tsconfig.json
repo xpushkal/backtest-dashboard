@@ -21,6 +21,8 @@
 // Feel free to adjust this configuration however you need.
 {
   "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
     "baseUrl": ".",
     "paths": {
       "*": ["../deps/*"]

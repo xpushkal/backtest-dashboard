@@ -48,10 +48,10 @@ defmodule QuantEdgeWeb.DashboardLive do
   def render(assigns) do
     ~H"""
     <div class="page-header">
-      <h1>📊 Dashboard</h1>
+      <h1> Dashboard</h1>
       <div class="flex-gap-3">
         <a href="/strategies/new" class="btn btn-primary">+ New Strategy</a>
-        <a href="/data" class="btn btn-secondary">💾 Data Explorer</a>
+        <a href="/data" class="btn btn-secondary"> Data Explorer</a>
       </div>
     </div>
 
@@ -66,17 +66,17 @@ defmodule QuantEdgeWeb.DashboardLive do
     <%!-- Quick Actions --%>
     <div class="grid-3 mb-8">
       <a href="/strategies/new" class="card" style="text-decoration:none;text-align:center;">
-        <div style="font-size:2rem;margin-bottom:0.5rem;">⚡</div>
+        <div style="font-size:2rem;margin-bottom:0.5rem;"></div>
         <h4>New Strategy</h4>
         <p class="text-sm text-muted mt-2">Create a multi-leg options strategy</p>
       </a>
       <a href="/runs" class="card" style="text-decoration:none;text-align:center;">
-        <div style="font-size:2rem;margin-bottom:0.5rem;">🚀</div>
+        <div style="font-size:2rem;margin-bottom:0.5rem;"></div>
         <h4>Run Backtest</h4>
         <p class="text-sm text-muted mt-2">Execute a strategy against historical data</p>
       </a>
       <a href="/optimizer" class="card" style="text-decoration:none;text-align:center;">
-        <div style="font-size:2rem;margin-bottom:0.5rem;">🔧</div>
+        <div style="font-size:2rem;margin-bottom:0.5rem;"></div>
         <h4>Optimize</h4>
         <p class="text-sm text-muted mt-2">Sweep parameters for best configuration</p>
       </a>
@@ -91,7 +91,7 @@ defmodule QuantEdgeWeb.DashboardLive do
 
       <div :if={@runs == []}>
         <.empty_state
-          icon="🚀"
+          icon=""
           title="No runs yet"
           description="Create a strategy and run your first backtest to see results here."
           action_label="Create Strategy"

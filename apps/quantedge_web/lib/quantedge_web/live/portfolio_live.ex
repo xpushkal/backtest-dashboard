@@ -209,7 +209,7 @@ defmodule QuantEdgeWeb.PortfolioLive do
 
     ~H"""
     <div class="page-header">
-      <h1>📈 Portfolio Builder</h1>
+      <h1> Portfolio Builder</h1>
     </div>
 
     <.tab_bar tabs={["Config", "Results"]} active={@active_tab} />
@@ -221,7 +221,7 @@ defmodule QuantEdgeWeb.PortfolioLive do
         <div class="card">
           <h3 class="mb-4">Select Strategies</h3>
           <div :if={@strategies == []}>
-            <.empty_state icon="⚡" title="No strategies" description="Create strategies first." />
+            <.empty_state icon="" title="No strategies" description="Create strategies first." />
           </div>
           <div :for={strategy <- @strategies} class="flex-between mb-3" style="padding: 0.5rem; border-bottom: 1px solid var(--border-primary);">
             <div class="flex-gap-3" style="align-items: center;">
@@ -292,7 +292,7 @@ defmodule QuantEdgeWeb.PortfolioLive do
             phx-click="run_portfolio"
             disabled={@running || MapSet.size(@selected) < 2 || abs(@alloc_sum - 100.0) > 0.15}
           >
-            {if @running, do: "Running...", else: "🚀 Run Portfolio Backtest"}
+            {if @running, do: "Running...", else: " Run Portfolio Backtest"}
           </button>
 
           <div :if={@running} class="mt-4">
@@ -306,7 +306,7 @@ defmodule QuantEdgeWeb.PortfolioLive do
     <div :if={@active_tab == "Results"}>
       <div :if={@results == nil}>
         <.empty_state
-          icon="📈"
+          icon=""
           title="No portfolio results"
           description="Run a portfolio backtest to see combined results and correlation matrix."
         />
