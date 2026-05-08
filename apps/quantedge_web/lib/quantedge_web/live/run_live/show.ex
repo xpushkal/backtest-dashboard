@@ -57,7 +57,7 @@ defmodule QuantEdgeWeb.RunLive.Show do
     ~H"""
     <div class="page-header">
       <div>
-        <h1>🚀 {run_name(@run)}</h1>
+        <h1> {run_name(@run)}</h1>
         <p class="text-sm text-muted mt-2">
           <.underlying_badge underlying={run_underlying(@run)} />
           <span class="ml-2">{fmt_date(@run.date_from)} — {fmt_date(@run.date_to)}</span>
@@ -647,22 +647,22 @@ defmodule QuantEdgeWeb.RunLive.Show do
 
   defp metric_category(key) do
     cond do
-      key in @return_keys -> "📈 Return Metrics"
-      key in @risk_keys -> "🛡️ Risk Metrics"
-      key in @trade_keys -> "📊 Trade Analytics"
-      key in @cost_keys -> "💰 Cost Breakdown"
-      key in @options_keys -> "⚙️ Options Analytics"
-      key in @greeks_keys -> "🧮 Greeks PnL"
-      true -> "📋 Other"
+      key in @return_keys -> " Return Metrics"
+      key in @risk_keys -> " Risk Metrics"
+      key in @trade_keys -> " Trade Analytics"
+      key in @cost_keys -> " Cost Breakdown"
+      key in @options_keys -> " Options Analytics"
+      key in @greeks_keys -> " Greeks PnL"
+      true -> " Other"
     end
   end
 
-  defp category_order("📈 Return Metrics"), do: 0
-  defp category_order("🛡️ Risk Metrics"), do: 1
-  defp category_order("📊 Trade Analytics"), do: 2
-  defp category_order("💰 Cost Breakdown"), do: 3
-  defp category_order("⚙️ Options Analytics"), do: 4
-  defp category_order("🧮 Greeks PnL"), do: 5
+  defp category_order(" Return Metrics"), do: 0
+  defp category_order(" Risk Metrics"), do: 1
+  defp category_order(" Trade Analytics"), do: 2
+  defp category_order(" Cost Breakdown"), do: 3
+  defp category_order(" Options Analytics"), do: 4
+  defp category_order(" Greeks PnL"), do: 5
   defp category_order(_), do: 6
 
   defp humanize_key(key) do

@@ -92,7 +92,7 @@ defmodule QuantEdgeWeb.RunLive.Index do
 
     ~H"""
     <div class="page-header">
-      <h1>🚀 Backtest Runs</h1>
+      <h1> Backtest Runs</h1>
       <button class="btn btn-primary" phx-click="show_config">+ New Run</button>
     </div>
 
@@ -149,7 +149,7 @@ defmodule QuantEdgeWeb.RunLive.Index do
 
     <div :if={@filtered_runs == []}>
       <.empty_state
-        icon="🚀"
+        icon=""
         title="No runs found"
         description="Configure and launch your first backtest to see results here."
       />
@@ -159,7 +159,7 @@ defmodule QuantEdgeWeb.RunLive.Index do
     <div :if={@show_config} class="modal-overlay">
       <div class="modal-content" phx-click-away="hide_config" style="max-width: 640px;">
         <div class="modal-header">
-          <h3 class="modal-title">🚀 Configure Backtest</h3>
+          <h3 class="modal-title"> Configure Backtest</h3>
           <button class="modal-close" phx-click="hide_config">×</button>
         </div>
 
@@ -193,7 +193,7 @@ defmodule QuantEdgeWeb.RunLive.Index do
 
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" phx-click="hide_config">Cancel</button>
-            <button type="submit" class="btn btn-primary">🚀 Run Backtest</button>
+            <button type="submit" class="btn btn-primary"> Run Backtest</button>
           </div>
         </form>
       </div>

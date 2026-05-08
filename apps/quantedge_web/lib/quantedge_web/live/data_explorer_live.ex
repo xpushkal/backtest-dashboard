@@ -38,8 +38,8 @@ defmodule QuantEdgeWeb.DataExplorerLive do
   def render(assigns) do
     ~H"""
     <div class="page-header">
-      <h1>💾 Data Explorer</h1>
-      <button class="btn btn-secondary" phx-click="refresh_data">🔄 Refresh</button>
+      <h1> Data Explorer</h1>
+      <button class="btn btn-secondary" phx-click="refresh_data"> Refresh</button>
     </div>
 
     <%!-- Summary Stats --%>
@@ -83,13 +83,13 @@ defmodule QuantEdgeWeb.DataExplorerLive do
           <%!-- Quality Indicators --%>
           <div class="mt-2">
             <div :if={summary.missing_days > 0} class="text-xs" style="color: var(--accent-yellow);">
-              ⚠ {summary.missing_days} missing trading days
+               {summary.missing_days} missing trading days
             </div>
             <div :if={summary.zero_volume_pct > 1.0} class="text-xs" style="color: var(--accent-yellow);">
-              ⚠ {summary.zero_volume_pct}% zero-volume bars
+               {summary.zero_volume_pct}% zero-volume bars
             </div>
             <div :if={summary.missing_days == 0 && summary.zero_volume_pct <= 1.0} class="text-xs" style="color: var(--accent-green);">
-              ✓ Data quality: Good
+               Data quality: Good
             </div>
           </div>
         </div>

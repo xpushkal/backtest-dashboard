@@ -180,7 +180,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
   def render(assigns) do
     ~H"""
     <div class="page-header">
-      <h1>⚡ Strategies</h1>
+      <h1> Strategies</h1>
       <a href="/strategies/new" class="btn btn-primary">+ New Strategy</a>
     </div>
 
@@ -208,8 +208,8 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
           </div>
         </a>
         <div class="flex-gap-2">
-          <a href={"/strategies/#{strategy.id}"} class="btn btn-sm btn-primary" style="font-size: 0.75rem;">📋 View</a>
-          <a href={"/strategies/#{strategy.id}/edit"} class="btn btn-sm btn-secondary">✏ Edit</a>
+          <a href={"/strategies/#{strategy.id}"} class="btn btn-sm btn-primary" style="font-size: 0.75rem;"> View</a>
+          <a href={"/strategies/#{strategy.id}/edit"} class="btn btn-sm btn-secondary"> Edit</a>
           <button class="btn btn-sm btn-danger" phx-click="delete_strategy" phx-value-id={strategy.id}>Delete</button>
         </div>
       </div>
@@ -217,7 +217,7 @@ defmodule QuantEdgeWeb.StrategyLive.Index do
 
     <div :if={@strategies == [] and !@show_form}>
       <.empty_state
-        icon="⚡"
+        icon=""
         title="No strategies yet"
         description="Create your first multi-leg options strategy to start backtesting."
         action_label="Create Strategy"
