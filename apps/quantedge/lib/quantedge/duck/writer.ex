@@ -71,61 +71,49 @@ defmodule QuantEdge.Duck.Writer do
     end
   end
 
+  # Chunk size for multi-row INSERTs. 22 cols × 500 rows = 11k params, well under DuckDB's limit.
+  @chunk_size 500
+
   @impl true
   def handle_call({:insert_trades, run_id, trades}, _from, state) do
-    sql = """
-    INSERT INTO trades (
-      run_id, trade_id,
-      entry_date, exit_date, entry_time, exit_time,
-      option_type, position_side,
-      entry_price, exit_price, entry_spot, exit_spot,
-      lots, lot_size,
-      pnl_gross, pnl_net, brokerage, stt, slippage_cost,
-      exit_reason, bars_held, reentry_attempt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """
+    cols = ~w(run_id trade_id entry_date exit_date entry_time exit_time
+              option_type position_side entry_price exit_price entry_spot exit_spot
+              lots lot_size pnl_gross pnl_net brokerage stt slippage_cost
+              exit_reason bars_held reentry_attempt)
+    col_count = length(cols)
 
-    inserted =
+    rows =
       trades
       |> Enum.with_index()
-      |> Enum.reduce(0, fn {trade, idx}, acc ->
-        params = [
-          run_id,
-          idx,
-          to_string(trade["entry_date"] || ""),
-          to_string(trade["exit_date"] || ""),
-          to_string(trade["entry_time"] || ""),
-          to_string(trade["exit_time"] || ""),
-          to_string(trade["option_type"] || ""),
-          to_string(trade["position_side"] || ""),
-          safe_num(trade["entry_price"]),
-          safe_num(trade["exit_price"]),
-          safe_num(trade["entry_spot"]),
-          safe_num(trade["exit_spot"]),
-          safe_int(trade["lots"]),
-          safe_int(trade["lot_size"]),
-          safe_num(trade["pnl_gross"]),
-          safe_num(trade["pnl_net"]),
-          safe_num(trade["brokerage"]),
-          safe_num(trade["stt"]),
-          safe_num(trade["slippage_cost"]),
-          to_string(trade["exit_reason"] || ""),
-          safe_int(trade["bars_held"]),
-          safe_int(trade["reentry_attempt"])
+      |> Enum.map(fn {t, idx} ->
+        [
+          run_id, idx,
+          to_string(t["entry_date"] || ""),
+          to_string(t["exit_date"] || ""),
+          to_string(t["entry_time"] || ""),
+          to_string(t["exit_time"] || ""),
+          to_string(t["option_type"] || ""),
+          to_string(t["position_side"] || ""),
+          safe_num(t["entry_price"]),
+          safe_num(t["exit_price"]),
+          safe_num(t["entry_spot"]),
+          safe_num(t["exit_spot"]),
+          safe_int(t["lots"]),
+          safe_int(t["lot_size"]),
+          safe_num(t["pnl_gross"]),
+          safe_num(t["pnl_net"]),
+          safe_num(t["brokerage"]),
+          safe_num(t["stt"]),
+          safe_num(t["slippage_cost"]),
+          to_string(t["exit_reason"] || ""),
+          safe_int(t["bars_held"]),
+          safe_int(t["reentry_attempt"])
         ]
-
-        case Duckdbex.query(state.conn, sql, params) do
-          {:ok, _} ->
-            acc + 1
-
-          {:error, reason} ->
-            Logger.error("DuckDB trade insert failed (run=#{run_id} idx=#{idx}): #{inspect(reason)}")
-            acc
-        end
       end)
 
-    if inserted < length(trades) do
-      Logger.warning("DuckDB: only #{inserted}/#{length(trades)} trades inserted for run #{run_id}")
+    inserted = batch_insert(state.conn, "trades", cols, col_count, rows, "trade")
+    if inserted < length(rows) do
+      Logger.warning("DuckDB: only #{inserted}/#{length(rows)} trades inserted for run #{run_id}")
     end
 
     {:reply, :ok, state}
@@ -133,66 +121,52 @@ defmodule QuantEdge.Duck.Writer do
 
   @impl true
   def handle_call({:insert_equity, run_id, curve}, _from, state) do
-    sql = """
-    INSERT INTO equity_curves (run_id, date, equity, drawdown_pct)
-    VALUES (?, ?, ?, ?)
-    """
+    cols = ~w(run_id date equity drawdown_pct)
 
-    Enum.each(curve, fn point ->
-      params = [
-        run_id,
-        to_string(point["date"] || point[:date] || ""),
-        safe_num(point["equity"] || point[:equity]),
-        safe_num(point["drawdown_pct"] || point[:drawdown_pct] || 0.0)
-      ]
+    rows =
+      Enum.map(curve, fn point ->
+        [
+          run_id,
+          to_string(point["date"] || point[:date] || ""),
+          safe_num(point["equity"] || point[:equity]),
+          safe_num(point["drawdown_pct"] || point[:drawdown_pct] || 0.0)
+        ]
+      end)
 
-      case Duckdbex.query(state.conn, sql, params) do
-        {:ok, _} -> :ok
-        {:error, reason} -> Logger.warning("Equity insert failed: #{inspect(reason)}")
-      end
-    end)
-
+    batch_insert(state.conn, "equity_curves", cols, 4, rows, "equity")
     {:reply, :ok, state}
   end
 
   @impl true
   def handle_call({:insert_metrics, run_id, metrics_map}, _from, state) when is_map(metrics_map) do
-    sql = "INSERT INTO metrics (run_id, metric_name, metric_value) VALUES (?, ?, ?)"
+    cols = ~w(run_id metric_name metric_value)
 
-    Enum.each(metrics_map, fn {name, value} ->
-      params = [run_id, to_string(name), safe_num(value)]
+    rows =
+      Enum.map(metrics_map, fn {name, value} ->
+        [run_id, to_string(name), safe_num(value)]
+      end)
 
-      case Duckdbex.query(state.conn, sql, params) do
-        {:ok, _} -> :ok
-        {:error, reason} -> Logger.warning("Metric insert failed (#{name}): #{inspect(reason)}")
-      end
-    end)
-
+    batch_insert(state.conn, "metrics", cols, 3, rows, "metric")
     {:reply, :ok, state}
   end
 
   @impl true
   def handle_call({:insert_optimizer, run_id, results}, _from, state) do
-    sql = """
-    INSERT INTO optimizer_results (optimizer_run_id, combo_index, params, metrics)
-    VALUES (?, ?, ?, ?)
-    """
+    cols = ~w(optimizer_run_id combo_index params metrics)
 
-    Enum.with_index(results)
-    |> Enum.each(fn {result, idx} ->
-      params = [
-        run_id,
-        idx,
-        Jason.encode!(result["params"] || %{}),
-        Jason.encode!(Map.drop(result, ["params", "combo_index"]))
-      ]
+    rows =
+      results
+      |> Enum.with_index()
+      |> Enum.map(fn {result, idx} ->
+        [
+          run_id,
+          idx,
+          Jason.encode!(result["params"] || %{}),
+          Jason.encode!(Map.drop(result, ["params", "combo_index"]))
+        ]
+      end)
 
-      case Duckdbex.query(state.conn, sql, params) do
-        {:ok, _} -> :ok
-        {:error, reason} -> Logger.warning("Optimizer result insert failed: #{inspect(reason)}")
-      end
-    end)
-
+    batch_insert(state.conn, "optimizer_results", cols, 4, rows, "optimizer result")
     {:reply, :ok, state}
   end
 
@@ -208,6 +182,38 @@ defmodule QuantEdge.Duck.Writer do
   end
 
   # ─── Helpers ────────────────────────────────────────────────
+
+  # Chunk rows and insert each chunk with a single multi-row INSERT,
+  # all wrapped in a transaction. Single-row inserts in DuckDB are
+  # ~100x slower than batched ones because each is its own commit.
+  defp batch_insert(_conn, _table, _cols, _col_count, [], _label), do: 0
+  defp batch_insert(conn, table, cols, col_count, rows, label) do
+    col_list = Enum.join(cols, ", ")
+    {:ok, _} = Duckdbex.query(conn, "BEGIN TRANSACTION")
+
+    inserted =
+      rows
+      |> Enum.chunk_every(@chunk_size)
+      |> Enum.reduce(0, fn chunk, acc ->
+        row_count = length(chunk)
+        row_placeholder = "(" <> Enum.map_join(1..col_count, ", ", fn _ -> "?" end) <> ")"
+        values_clause = Enum.map_join(1..row_count, ", ", fn _ -> row_placeholder end)
+        sql = "INSERT INTO #{table} (#{col_list}) VALUES #{values_clause}"
+        params = List.flatten(chunk)
+
+        case Duckdbex.query(conn, sql, params) do
+          {:ok, _} ->
+            acc + row_count
+
+          {:error, reason} ->
+            Logger.error("DuckDB #{label} batch insert failed (#{row_count} rows): #{inspect(reason)}")
+            acc
+        end
+      end)
+
+    {:ok, _} = Duckdbex.query(conn, "COMMIT")
+    inserted
+  end
 
   # DuckDB rejects NaN/Infinity. Coerce them to nil so the row inserts as NULL.
   defp safe_num(nil), do: nil
