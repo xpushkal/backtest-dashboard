@@ -9,12 +9,7 @@ const EquityChart = {
     this.pushEvent("request_chart_data", {chart: "equity"})
   },
 
-  async renderChart(data) {
-    // Lazy-load Chart.js from CDN
-    if (!window.Chart) {
-      await this.loadScript("https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js")
-    }
-
+  renderChart(data) {
     const canvas = this.el.querySelector("canvas")
     if (!canvas || !data.labels || data.labels.length === 0) return
 
@@ -84,7 +79,7 @@ const EquityChart = {
             borderColor: "#2a2a40",
             borderWidth: 1,
             titleFont: { family: "Inter", weight: "600" },
-            bodyFont: { family: "JetBrains Mono", size: 12 },
+            bodyFont: { family: "ui-monospace, SFMono-Regular, Menlo, monospace", size: 12 },
             callbacks: {
               label: function(context) {
                 if (context.datasetIndex === 0) {
@@ -111,7 +106,7 @@ const EquityChart = {
             title: { display: true, text: "Equity (₹)", color: "#8b8fa3" },
             ticks: {
               color: "#8b8fa3",
-              font: { family: "JetBrains Mono", size: 11 },
+              font: { family: "ui-monospace, SFMono-Regular, Menlo, monospace", size: 11 },
               callback: (v) => `₹${(v/1000).toFixed(0)}K`
             },
             grid: { color: "rgba(30, 30, 46, 0.5)" }
@@ -122,23 +117,13 @@ const EquityChart = {
             title: { display: true, text: "Drawdown %", color: "#ff6b6b" },
             ticks: {
               color: "#ff6b6b",
-              font: { family: "JetBrains Mono", size: 11 },
+              font: { family: "ui-monospace, SFMono-Regular, Menlo, monospace", size: 11 },
               callback: (v) => `${v.toFixed(1)}%`
             },
             grid: { drawOnChartArea: false }
           }
         }
       }
-    })
-  },
-
-  loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const script = document.createElement("script")
-      script.src = src
-      script.onload = resolve
-      script.onerror = reject
-      document.head.appendChild(script)
     })
   },
 

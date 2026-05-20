@@ -80,11 +80,7 @@ const MonteCarloChart = {
     this.pushEvent("request_chart_data", {chart: "montecarlo"})
   },
 
-  async renderChart(data) {
-    if (!window.Chart) {
-      await loadChartJS()
-    }
-
+  renderChart(data) {
     const canvas = this.el.querySelector("canvas")
     if (!canvas) return
 
@@ -140,6 +136,7 @@ const MonteCarloChart = {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: false,
         interaction: { mode: "index", intersect: false },
         plugins: {
           legend: {
@@ -162,7 +159,7 @@ const MonteCarloChart = {
           y: {
             ticks: {
               color: "#8b8fa3",
-              font: { family: "JetBrains Mono", size: 11 },
+              font: { family: "ui-monospace, SFMono-Regular, Menlo, monospace", size: 11 },
               callback: (v) => `₹${(v/1000).toFixed(0)}K`
             },
             grid: { color: "rgba(30, 30, 46, 0.5)" }
@@ -187,11 +184,7 @@ const GreeksChart = {
     this.pushEvent("request_chart_data", {chart: "greeks"})
   },
 
-  async renderChart(data) {
-    if (!window.Chart) {
-      await loadChartJS()
-    }
-
+  renderChart(data) {
     const canvas = this.el.querySelector("canvas")
     if (!canvas) return
 
@@ -237,6 +230,7 @@ const GreeksChart = {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: false,
         plugins: {
           legend: {
             position: "top",
@@ -253,7 +247,7 @@ const GreeksChart = {
             stacked: true,
             ticks: {
               color: "#8b8fa3",
-              font: { family: "JetBrains Mono", size: 11 }
+              font: { family: "ui-monospace, SFMono-Regular, Menlo, monospace", size: 11 }
             },
             grid: { color: "rgba(30, 30, 46, 0.5)" }
           }
@@ -276,11 +270,7 @@ const WalkForwardChart = {
     this.handleEvent("walkforward_data", (data) => this.renderChart(data))
   },
 
-  async renderChart(data) {
-    if (!window.Chart) {
-      await loadChartJS()
-    }
-
+  renderChart(data) {
     const canvas = this.el.querySelector("canvas")
     if (!canvas) return
 
@@ -312,6 +302,7 @@ const WalkForwardChart = {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: false,
         plugins: {
           legend: {
             position: "top",
@@ -327,7 +318,7 @@ const WalkForwardChart = {
             title: { display: true, text: "Sharpe Ratio", color: "#8b8fa3" },
             ticks: {
               color: "#8b8fa3",
-              font: { family: "JetBrains Mono", size: 11 }
+              font: { family: "ui-monospace, SFMono-Regular, Menlo, monospace", size: 11 }
             },
             grid: { color: "rgba(30, 30, 46, 0.5)" }
           }
@@ -350,8 +341,7 @@ const DailyPnLChart = {
     this.handleEvent("daily_pnl_data", (data) => this.renderChart(data))
     this.pushEvent("request_chart_data", {chart: "daily_pnl"})
   },
-  async renderChart(data) {
-    if (!window.Chart) await loadChartJS()
+  renderChart(data) {
     const canvas = this.el.querySelector("canvas")
     if (!canvas) return
     if (this.chart) this.chart.destroy()
@@ -362,6 +352,7 @@ const DailyPnLChart = {
       data: { labels: data.labels, datasets: [{ label: "Daily PnL", data: data.pnl, backgroundColor: colors, borderWidth: 0 }] },
       options: {
         responsive: true, maintainAspectRatio: false,
+        animation: false,
         plugins: { legend: { display: false } },
         scales: {
           x: { ticks: { color: "#5a5e73", maxTicksLimit: 12 }, grid: { display: false } },
@@ -382,8 +373,7 @@ const DrawdownChart = {
     this.handleEvent("drawdown_data", (data) => this.renderChart(data))
     this.pushEvent("request_chart_data", {chart: "drawdown"})
   },
-  async renderChart(data) {
-    if (!window.Chart) await loadChartJS()
+  renderChart(data) {
     const canvas = this.el.querySelector("canvas")
     if (!canvas) return
     if (this.chart) this.chart.destroy()
@@ -438,8 +428,7 @@ const ReturnsHistogram = {
     this.handleEvent("histogram_data", (data) => this.renderChart(data))
     this.pushEvent("request_chart_data", {chart: "histogram"})
   },
-  async renderChart(data) {
-    if (!window.Chart) await loadChartJS()
+  renderChart(data) {
     const canvas = this.el.querySelector("canvas")
     if (!canvas) return
     if (this.chart) this.chart.destroy()
@@ -450,6 +439,7 @@ const ReturnsHistogram = {
       data: { labels: data.labels, datasets: [{ label: "Trade Count", data: data.counts, backgroundColor: colors, borderWidth: 0 }] },
       options: {
         responsive: true, maintainAspectRatio: false,
+        animation: false,
         plugins: { legend: { display: false } },
         scales: {
           x: { ticks: { color: "#5a5e73", maxTicksLimit: 10 }, grid: { display: false } },
@@ -461,16 +451,5 @@ const ReturnsHistogram = {
   destroyed() { if (this.chart) this.chart.destroy() }
 }
 
-// Shared Chart.js loader
-function loadChartJS() {
-  return new Promise((resolve, reject) => {
-    if (window.Chart) return resolve()
-    const script = document.createElement("script")
-    script.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
-    script.onload = resolve
-    script.onerror = reject
-    document.head.appendChild(script)
-  })
-}
 
 export { MonthlyHeatmap, MonteCarloChart, GreeksChart, WalkForwardChart, DailyPnLChart, DrawdownChart, ReturnsHistogram }

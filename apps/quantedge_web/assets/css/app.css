@@ -3,8 +3,7 @@
    Dark-mode financial dashboard theme
    ============================================================ */
 
-/* --- Google Fonts --- */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Use system font stack — no external CDN, no FOUT, no extra round-trip. */
 
 /* --- CSS Custom Properties --- */
 :root {
@@ -68,6 +67,9 @@
   /* Sidebar */
   --sidebar-width: 240px;
 
+  /* Fonts */
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
   /* Transitions */
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;
@@ -88,7 +90,7 @@ html {
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "Inter", sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.6;
@@ -287,7 +289,7 @@ h4 { font-size: 1rem; }
 }
 
 .stat-card .stat-value {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 1.5rem;
   font-weight: 600;
   color: var(--text-primary);
@@ -443,7 +445,7 @@ select.input {
 }
 
 .data-table .col-number {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   text-align: right;
 }
 
@@ -469,6 +471,8 @@ select.input {
 .badge-running { background: var(--accent-cyan-dim); color: var(--accent-cyan); animation: pulse-glow 2s infinite; }
 .badge-completed { background: var(--accent-green-dim); color: var(--accent-green); }
 .badge-failed { background: var(--accent-red-dim); color: var(--accent-red); }
+.badge-loading { background: var(--bg-hover); color: var(--text-secondary); }
+.badge-unknown { background: var(--bg-hover); color: var(--text-muted); }
 
 /* Underlying badges */
 .badge-bn { background: rgba(255, 171, 0, 0.15); color: #ffab00; }
@@ -612,7 +616,7 @@ select.input {
 }
 
 /* --- Utility Classes --- */
-.text-mono { font-family: 'JetBrains Mono', monospace; }
+.text-mono { font-family: var(--font-mono); }
 .text-profit { color: var(--accent-green) !important; }
 .text-loss { color: var(--accent-red) !important; }
 .text-muted { color: var(--text-secondary); }

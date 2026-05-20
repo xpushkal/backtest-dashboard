@@ -8,28 +8,67 @@ defmodule QuantEdgeWeb.RunLive.Show do
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    run = safe_get_run(id)
-    metrics = safe_get_metrics(id)
-    trades = safe_get_trades(id)
-    equity = safe_get_equity(id) |> downsample(1500)
+    socket =
+      socket
+      |> assign(:page_title, "Run Results")
+      |> assign(:active_nav, :runs)
+      |> assign(:run_id, id)
+      |> assign(:active_tab, "Overview")
+      |> assign(:trade_page, 0)
+      |> assign(:loading, true)
+      |> assign(:run, empty_run(id))
+      |> assign(:metrics, %{})
+      |> assign(:trades, [])
+      |> assign(:equity, [])
 
-    Logger.info(
-      "RunLive.Show mount run_id=#{inspect(id)} status=#{inspect(Map.get(run, :status))} " <>
-        "metrics=#{map_size(metrics)} trades=#{length(trades)} equity=#{length(equity)}"
-    )
+    if connected?(socket) do
+      parent = self()
 
-    {:ok,
-     socket
-     |> assign(:page_title, "Run Results")
-     |> assign(:active_nav, :runs)
-     |> assign(:run_id, id)
-     |> assign(:run, run)
-     |> assign(:metrics, metrics)
-     |> assign(:trades, trades)
-     |> assign(:equity, equity)
-     |> assign(:active_tab, "Overview")
-     |> assign(:trade_page, 0)
-     |> push_chart_data(equity)}
+      Task.start(fn ->
+        run = safe_get_run(id)
+        metrics = safe_get_metrics(id)
+        trades = safe_get_trades(id)
+        equity = id |> safe_get_equity() |> downsample(1500)
+
+        Logger.info(
+          "RunLive.Show loaded run_id=#{inspect(id)} status=#{inspect(Map.get(run, :status))} " <>
+            "metrics=#{map_size(metrics)} trades=#{length(trades)} equity=#{length(equity)}"
+        )
+
+        send(parent, {:run_data_loaded, run, metrics, trades, equity})
+      end)
+    end
+
+    {:ok, socket}
+  end
+
+  @impl true
+  def handle_info({:run_data_loaded, run, metrics, trades, equity}, socket) do
+    socket =
+      socket
+      |> assign(:run, run)
+      |> assign(:metrics, metrics)
+      |> assign(:trades, trades)
+      |> assign(:equity, equity)
+      |> assign(:loading, false)
+
+    # Re-push every chart's data. If the user switched to Analytics before the
+    # async load finished, the hooks already fired request_chart_data against
+    # empty placeholders; this refresh fills them in.
+    {:noreply, push_all_charts(socket)}
+  end
+
+  def handle_info(_, socket), do: {:noreply, socket}
+
+  defp push_all_charts(socket) do
+    socket
+    |> push_chart_data(socket.assigns.equity)
+    |> push_heatmap(socket.assigns.run_id)
+    |> push_daily_pnl(socket.assigns.run_id)
+    |> push_drawdown(socket.assigns.equity)
+    |> push_montecarlo(socket.assigns.equity)
+    |> push_returns_histogram(socket.assigns.trades)
+    |> push_greeks(socket.assigns.metrics)
   end
 
   @impl true
@@ -57,7 +96,7 @@ defmodule QuantEdgeWeb.RunLive.Show do
     ~H"""
     <div class="page-header">
       <div>
-        <h1> {run_name(@run)}</h1>
+        <h1>{run_name(@run)}</h1>
         <p class="text-sm text-muted mt-2">
           <.underlying_badge underlying={run_underlying(@run)} />
           <span class="ml-2">{fmt_date(@run.date_from)} — {fmt_date(@run.date_to)}</span>
@@ -66,6 +105,10 @@ defmodule QuantEdgeWeb.RunLive.Show do
         </p>
       </div>
       <a href="/runs" class="btn btn-secondary">← Back to Runs</a>
+    </div>
+
+    <div :if={@loading} class="card mb-8 text-center text-muted" style="padding: 2rem;">
+      Loading run results…
     </div>
 
     <%!-- Hero Stats Row 1: Core Returns --%>
@@ -220,64 +263,61 @@ defmodule QuantEdgeWeb.RunLive.Show do
 
     <%!-- Analytics Tab --%>
     <div :if={@active_tab == "Analytics"}>
-      <%!-- Monthly PnL Heatmap --%>
-      <div class="card mb-8">
+      <div class="card mb-6">
         <div class="card-header">
           <span class="card-title">Monthly PnL Heatmap</span>
         </div>
-        <div id="monthly-heatmap" phx-hook="MonthlyHeatmap" phx-update="ignore" style="min-height: 200px;">
-          <p class="text-center text-muted" style="padding: 2rem;">Loading heatmap data...</p>
+        <div id="monthly-heatmap" phx-hook="MonthlyHeatmap" phx-update="ignore" style="min-height: 160px;">
+          <p class="text-center text-muted" style="padding: 1.5rem;">Loading heatmap…</p>
         </div>
       </div>
 
-      <%!-- Daily PnL Distribution --%>
-      <div class="card mb-8">
-        <div class="card-header">
-          <span class="card-title">Daily PnL Distribution</span>
-        </div>
-        <div id="daily-pnl-chart" phx-hook="DailyPnLChart" phx-update="ignore" style="height: 300px; position: relative;">
-          <canvas></canvas>
-        </div>
-      </div>
-
-      <%!-- Drawdown Curve --%>
-      <div class="card mb-8">
-        <div class="card-header">
-          <span class="card-title">Drawdown Curve</span>
-        </div>
-        <div id="drawdown-chart" phx-hook="DrawdownChart" phx-update="ignore" style="height: 280px; position: relative;">
-          <canvas></canvas>
-        </div>
-      </div>
-
-      <div class="grid-2 mb-8">
-        <%!-- Monte Carlo Confidence Bands --%>
+      <div class="grid-2 mb-6">
         <div class="card">
           <div class="card-header">
-            <span class="card-title">Monte Carlo Simulation (1000 paths)</span>
+            <span class="card-title">Daily PnL Distribution</span>
           </div>
-          <div id="montecarlo-chart" phx-hook="MonteCarloChart" phx-update="ignore" style="height: 320px; position: relative;">
+          <div id="daily-pnl-chart" phx-hook="DailyPnLChart" phx-update="ignore" style="height: 280px; position: relative;">
             <canvas></canvas>
           </div>
         </div>
 
-        <%!-- Returns Histogram --%>
         <div class="card">
           <div class="card-header">
             <span class="card-title">Trade PnL Distribution</span>
           </div>
-          <div id="returns-histogram" phx-hook="ReturnsHistogram" phx-update="ignore" style="height: 320px; position: relative;">
+          <div id="returns-histogram" phx-hook="ReturnsHistogram" phx-update="ignore" style="height: 280px; position: relative;">
             <canvas></canvas>
           </div>
         </div>
       </div>
 
-      <%!-- Greeks Attribution (only if options data exists) --%>
-      <div :if={has_greeks?(@metrics)} class="card mb-8">
+      <div class="grid-2 mb-6">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Drawdown Curve</span>
+          </div>
+          <div id="drawdown-chart" phx-hook="DrawdownChart" phx-update="ignore" style="height: 280px; position: relative;">
+            <canvas></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Monte Carlo Projection</span>
+            <span class="text-xs text-muted">500 paths · seeded per run</span>
+          </div>
+          <div id="montecarlo-chart" phx-hook="MonteCarloChart" phx-update="ignore" style="height: 280px; position: relative;">
+            <canvas></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div :if={has_greeks?(@metrics)} class="card mb-6">
         <div class="card-header">
           <span class="card-title">Greeks PnL Attribution</span>
         </div>
-        <div id="greeks-chart" phx-hook="GreeksChart" phx-update="ignore" style="height: 320px; position: relative;">
+        <div id="greeks-chart" phx-hook="GreeksChart" phx-update="ignore" style="height: 300px; position: relative;">
           <canvas></canvas>
         </div>
       </div>
@@ -505,9 +545,21 @@ defmodule QuantEdgeWeb.RunLive.Show do
     try do
       QuantEdge.Runs.get_run!(id)
     rescue
-      _ -> %{id: id, status: "unknown", date_from: nil, date_to: nil, capital: nil,
-             result_summary: %{}, strategy: nil, inserted_at: nil}
+      _ -> empty_run(id)
     end
+  end
+
+  defp empty_run(id) do
+    %{
+      id: id,
+      status: "loading",
+      date_from: nil,
+      date_to: nil,
+      capital: nil,
+      result_summary: %{},
+      strategy: nil,
+      inserted_at: nil
+    }
   end
 
   defp safe_get_metrics(id) do

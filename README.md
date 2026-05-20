@@ -593,10 +593,4 @@ QuantEdge.Optimizer.run_sweep("strategy-uuid", %{
 
 ---
 
-## License
-
-Private — personal use only. Not for redistribution.
-
----
-
 *Built with Rust + Phoenix. Data: NSE FNO 1-minute bars. Instruments: BankNifty, Nifty, Sensex.*

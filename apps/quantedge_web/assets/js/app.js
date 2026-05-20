@@ -24,16 +24,9 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 
-// Preload Chart.js once at app boot so chart hooks don't race the CDN
-// each time the Analytics tab is opened.
-;(function preloadChartJS() {
-  if (typeof window === "undefined" || window.Chart || window.__chartjsLoading) return
-  window.__chartjsLoading = true
-  const s = document.createElement("script")
-  s.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
-  s.async = true
-  document.head.appendChild(s)
-})()
+// Bundle Chart.js into the app so charts work offline and don't pay
+// a CDN round-trip on the Analytics tab.
+import "../vendor/chart.umd.min.js"
 
 import {EquityChart} from "./hooks/equity_chart"
 import {MonthlyHeatmap, MonteCarloChart, GreeksChart, WalkForwardChart, DailyPnLChart, DrawdownChart, ReturnsHistogram} from "./hooks/advanced_charts"
