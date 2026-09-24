@@ -13,7 +13,6 @@ defmodule QuantEdge.Duck.Writer do
   use GenServer
   require Logger
 
-  @db_dir "priv/duckdb"
   @db_file "quantedge.duckdb"
 
   # ─── Client API ────────────────────────────────────────────
@@ -51,8 +50,13 @@ defmodule QuantEdge.Duck.Writer do
 
   @impl true
   def init(_opts) do
-    db_path = Path.join(@db_dir, @db_file)
-    File.mkdir_p!(@db_dir)
+    db_dir =
+      :quantedge
+      |> Application.get_env(:duckdb_dir, default_db_dir())
+      |> Path.expand()
+
+    db_path = Path.join(db_dir, @db_file)
+    File.mkdir_p!(db_dir)
 
     case Duckdbex.open(db_path) do
       {:ok, db} ->
@@ -71,6 +75,10 @@ defmodule QuantEdge.Duck.Writer do
     end
   end
 
+  defp default_db_dir do
+    Path.expand("../../../../../priv/duckdb", __DIR__)
+  end
+
   # Chunk size for multi-row INSERTs. 22 cols × 500 rows = 11k params, well under DuckDB's limit.
   @chunk_size 500
 
@@ -87,7 +95,8 @@ defmodule QuantEdge.Duck.Writer do
       |> Enum.with_index()
       |> Enum.map(fn {t, idx} ->
         [
-          run_id, idx,
+          run_id,
+          idx,
           to_string(t["entry_date"] || ""),
           to_string(t["exit_date"] || ""),
           to_string(t["entry_time"] || ""),
@@ -113,6 +122,7 @@ defmodule QuantEdge.Duck.Writer do
       end)
 
     inserted = batch_insert(state.conn, "trades", cols, col_count, rows, "trade")
+
     if inserted < length(rows) do
       Logger.warning("DuckDB: only #{inserted}/#{length(rows)} trades inserted for run #{run_id}")
     end
@@ -139,7 +149,8 @@ defmodule QuantEdge.Duck.Writer do
   end
 
   @impl true
-  def handle_call({:insert_metrics, run_id, metrics_map}, _from, state) when is_map(metrics_map) do
+  def handle_call({:insert_metrics, run_id, metrics_map}, _from, state)
+      when is_map(metrics_map) do
     cols = ~w(run_id metric_name metric_value)
 
     rows =
@@ -197,6 +208,7 @@ defmodule QuantEdge.Duck.Writer do
   # all wrapped in a transaction. Single-row inserts in DuckDB are
   # ~100x slower than batched ones because each is its own commit.
   defp batch_insert(_conn, _table, _cols, _col_count, [], _label), do: 0
+
   defp batch_insert(conn, table, cols, col_count, rows, label) do
     col_list = Enum.join(cols, ", ")
     {:ok, _} = Duckdbex.query(conn, "BEGIN TRANSACTION")
@@ -216,7 +228,10 @@ defmodule QuantEdge.Duck.Writer do
             acc + row_count
 
           {:error, reason} ->
-            Logger.error("DuckDB #{label} batch insert failed (#{row_count} rows): #{inspect(reason)}")
+            Logger.error(
+              "DuckDB #{label} batch insert failed (#{row_count} rows): #{inspect(reason)}"
+            )
+
             acc
         end
       end)
@@ -228,31 +243,38 @@ defmodule QuantEdge.Duck.Writer do
   # DuckDB rejects NaN/Infinity. Coerce them to nil so the row inserts as NULL.
   defp safe_num(nil), do: nil
   defp safe_num(v) when is_integer(v), do: v * 1.0
+
   defp safe_num(v) when is_float(v) do
     cond do
-      v != v -> nil          # NaN
-      v == :infinity -> nil  # not actually possible from Jason but defensive
+      # NaN
+      v != v -> nil
+      # not actually possible from Jason but defensive
+      v == :infinity -> nil
       abs(v) > 1.0e308 -> nil
       true -> v
     end
   end
+
   defp safe_num(v) when is_binary(v) do
     case Float.parse(v) do
       {f, _} -> safe_num(f)
       :error -> nil
     end
   end
+
   defp safe_num(_), do: nil
 
   defp safe_int(nil), do: 0
   defp safe_int(v) when is_integer(v), do: v
   defp safe_int(v) when is_float(v), do: trunc(v)
+
   defp safe_int(v) when is_binary(v) do
     case Integer.parse(v) do
       {i, _} -> i
       :error -> 0
     end
   end
+
   defp safe_int(_), do: 0
 
   # ─── Table Creation ────────────────────────────────────────

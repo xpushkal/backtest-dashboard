@@ -23,6 +23,7 @@ erl_crash.dump
 
 # DuckDB
 priv/duckdb/
+apps/quantedge_web/priv/duckdb/
 
 # Node
 node_modules/

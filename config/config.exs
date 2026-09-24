@@ -8,8 +8,10 @@ config :quantedge,
   ecto_repos: [QuantEdge.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true]
 
-# Configure data directory
-config :quantedge, :data_dir, "Data/parquet"
+# Configure storage directories from the umbrella root so the app behaves the
+# same whether it is started from the root or from apps/quantedge_web.
+config :quantedge, :data_dir, Path.expand("../Data/parquet", __DIR__)
+config :quantedge, :duckdb_dir, Path.expand("../priv/duckdb", __DIR__)
 
 # Configure Oban
 config :quantedge, Oban,
